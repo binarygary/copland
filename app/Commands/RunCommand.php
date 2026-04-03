@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use Anthropic\Client;
 use App\Config\GlobalConfig;
 use App\Config\RepoConfig;
 use App\Services\ClaudeExecutorService;
@@ -15,6 +16,7 @@ use App\Services\PlanValidatorService;
 use App\Services\RunOrchestratorService;
 use App\Services\VerificationService;
 use App\Services\WorkspaceService;
+use App\Support\AnthropicApiClient;
 use App\Support\AnthropicCostEstimator;
 use App\Support\ProgressReporter;
 use App\Support\RunProgressSnapshot;
@@ -40,6 +42,11 @@ class RunCommand extends Command implements SignalableCommandInterface
 
         $this->line($progress->step('Load configuration and start run'));
         $globalConfig = new GlobalConfig;
+        $apiClient = new AnthropicApiClient(
+            client: new Client(apiKey: $globalConfig->claudeApiKey()),
+            maxAttempts: $globalConfig->retryMaxAttempts(),
+            baseDelaySeconds: $globalConfig->retryBaseDelaySeconds(),
+        );
         $repoConfig = new RepoConfig(getcwd());
         $git = new GitService;
 
@@ -52,18 +59,19 @@ class RunCommand extends Command implements SignalableCommandInterface
             'max_files_changed' => $globalConfig->defaultMaxFiles(),
             'max_lines_changed' => $globalConfig->defaultMaxLines(),
             'max_executor_rounds' => $repoConfig->maxExecutorRounds(),
+            'read_file_max_lines' => $repoConfig->readFileMaxLines(),
             'repo_path' => getcwd(),
         ];
 
         $orchestrator = new RunOrchestratorService(
             github: new GitHubService,
             prefilter: new IssuePrefilterService($repoConfig, new GitHubService, $repo),
-            selector: new ClaudeSelectorService($globalConfig),
-            planner: new ClaudePlannerService($globalConfig),
+            selector: new ClaudeSelectorService($globalConfig, $apiClient),
+            planner: new ClaudePlannerService($globalConfig, $apiClient),
             validator: new PlanValidatorService,
             workspace: new WorkspaceService($repoConfig, $git),
             git: $git,
-            executor: new ClaudeExecutorService($globalConfig),
+            executor: new ClaudeExecutorService($globalConfig, $apiClient),
             verifier: new VerificationService($git),
         );
 

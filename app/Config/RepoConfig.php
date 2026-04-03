@@ -23,9 +23,10 @@ class RepoConfig
             return;
         }
 
-        $default = <<<'YAML'
+$default = <<<'YAML'
 base_branch: main
 max_executor_rounds: 12
+read_file_max_lines: 300
 
 issue_labels:
   required: [agent-ready]
@@ -62,6 +63,11 @@ YAML;
     public function maxExecutorRounds(): int
     {
         return (int) ($this->data['max_executor_rounds'] ?? 12);
+    }
+
+    public function readFileMaxLines(): int
+    {
+        return max(1, (int) ($this->data['read_file_max_lines'] ?? 300));
     }
 
     public function requiredLabels(): array

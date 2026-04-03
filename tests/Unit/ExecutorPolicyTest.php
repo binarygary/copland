@@ -25,6 +25,18 @@ it('requires write targets to be listed in files_to_change', function () {
     ]))->toThrow(PolicyViolationException::class);
 });
 
+it('blocks writes listed in blocked_write_paths', function () {
+    $policy = new ExecutorPolicy;
+
+    expect($policy->assertWritePathNotBlocked('resources/views/example.blade.php', [
+        'resources/views/admin.blade.php',
+    ]))->toBe('resources/views/example.blade.php');
+
+    expect(fn () => $policy->assertWritePathNotBlocked('resources/views/admin.blade.php', [
+        'resources/views/admin.blade.php',
+    ]))->toThrow(PolicyViolationException::class);
+});
+
 it('requires exact command matches against the plan', function () {
     $policy = new ExecutorPolicy;
 

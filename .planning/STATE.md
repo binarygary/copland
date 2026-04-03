@@ -2,37 +2,41 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: "Completed quick plan 260402-u6u: add quality tooling (pest, pint, phpstan)"
-last_updated: "2026-04-03T01:52:30.011Z"
-last_activity: 2026-04-03 - Completed quick task 260402-u6u: Add quality tooling: Pest (testing), Pint (code style), and PHPStan (static analysis)
+status: ready_to_execute
+stopped_at: Phase 3 planned
+last_updated: "2026-04-03T18:26:00Z"
+last_activity: 2026-04-03 -- Phase 3 planning completed
 progress:
-  percent: 0
+  total_phases: 11
+  completed_phases: 2
+  total_plans: 12
+  completed_plans: 8
+  percent: 27
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-02)
+See: .planning/PROJECT.md (updated 2026-04-03)
 
 **Core value:** A reliable overnight agent that opens merge-ready PRs without intervention.
-**Current focus:** Phase 1 — API Retry/Backoff
+**Current focus:** Phase 3 — Structured Run Log
 
 ## Current Position
 
-Phase: 1 of 11 (API Retry/Backoff)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-04-02 — Roadmap created, 11 phases covering 15 v1 requirements
+Phase: 3 (Structured Run Log) — READY TO EXECUTE
+Plan: 4 plans across 2 waves
+Status: Ready to execute Phase 3
+Last activity: 2026-04-03 -- Phase 3 planning completed
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 27%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
+- Total plans completed: 8
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -40,12 +44,13 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 1 | 4 | 44 min | 11 min |
+| 2 | 4 | 34 min | 9 min |
 
 **Recent Trend:**
 
-- Last 5 plans: —
-- Trend: —
+- Last 5 plans: 5 completed
+- Trend: Phase 2 complete
 
 *Updated after each plan completion*
 
@@ -60,6 +65,12 @@ Recent decisions affecting current work:
 - Roadmap: HOME resolution fix (posix_getpwuid fallback) is a prerequisite for Phase 3 log path resolution; addressed in Phase 1
 - Roadmap: Prompt caching split into Phase 4 (add cache_control) and Phase 5 (update cost model) — cost model depends on caching being in place first
 - Roadmap: Testing phases (8-10) deferred until core changes stabilize so interfaces being tested are final
+- Phase 1: Commands now construct a shared AnthropicApiClient using retry settings from ~/.copland.yml
+- Phase 2: Executor read_file is now capped per repo with an explicit truncation footer, defaulting to 300 lines
+- Phase 2: Structured blocked_write_paths now flows planner -> validator -> executor -> stored artifacts, replacing fragile write guardrail text matching
+- Phase 3: Run logging should be append-only JSONL under ~/.copland/logs/runs.jsonl and written from orchestrator finalization
+- Phase 3: Existing CLI cost output in RunCommand is already the baseline to preserve, not redesign
+- Phase 3: Plan decomposition is storage primitive + CLI regression lock-in first, then normal and partial orchestrator logging in wave 2
 
 ### Pending Todos
 
@@ -69,7 +80,6 @@ None yet.
 
 - Phase 4/5: Verify anthropic-ai/sdk ^0.8.0 exposes cacheCreationInputTokens and cacheReadInputTokens on response object before implementing cost tracking (inspect vendor/anthropic-ai/sdk/src/)
 - Phase 4: Verify whether SDK passes arbitrary keys on tool definitions through to API (needed for tool-level cache_control)
-- Phase 1: Confirm posix extension is enabled in the PHP environment (php -m | grep posix) before relying on posix_getpwuid()
 
 ### Quick Tasks Completed
 
@@ -79,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-03T01:52:30.001Z
-Stopped at: Completed quick plan 260402-u6u: add quality tooling (pest, pint, phpstan)
-Resume file: None
+Last session: 2026-04-03T18:26:00Z
+Stopped at: Phase 3 planned
+Resume file: .planning/phases/03-structured-run-log/03-01-PLAN.md

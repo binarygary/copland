@@ -18,13 +18,14 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 - ✓ Draft PR creation with GitHub integration — existing
 - ✓ Per-repo `.copland.yml` config and global `~/.copland.yml` config — existing
 - ✓ SIGINT handling with cost reporting — existing
+- ✓ API retry/backoff so transient Anthropic failures retry with configurable backoff — validated in Phase 1 (2026-04-03)
+- ✓ Executor file reads capped per repo with truncation notice — validated in Phase 2 (2026-04-03)
+- ✓ Structured blocked-write protection enforced end-to-end — validated in Phase 2 (2026-04-03)
 
 ### Active
 
-- [ ] API retry/backoff so transient errors don't kill overnight runs
 - [ ] Structured run log — reviewable record of decisions, tool calls, and outcomes
 - [ ] Prompt caching on executor loop — cut API costs significantly
-- [ ] File read size cap — prevent large reads from ballooning context/cost
 - [ ] Test coverage on ClaudeExecutorService and RunOrchestratorService
 - [ ] Cron setup: run multiple times per night to clear issue backlog
 - [ ] Multi-repo support: single cron entry runs all configured repos in sequence
@@ -62,6 +63,8 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 | Prompt caching on executor system prompt | Biggest single cost saving, one-line change | — Pending |
 | Haiku for selector, Sonnet for planner+executor | Cost optimization already in place | ✓ Good |
 | GitHub as audit log (no local DB) | No infrastructure to manage, PR/issue comments are the history | ✓ Good |
+| AnthropicApiClient owns retry behavior for all Claude services | Keeps transient-failure handling consistent across selector, planner, and executor | ✓ Phase 1 |
+| Executor write protection uses structured `blocked_write_paths` | Exact path checks are safer and more debuggable than parsing guardrail prose | ✓ Phase 2 |
 
 ## Evolution
 
@@ -81,4 +84,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-02 after initialization*
+*Last updated: 2026-04-03 after Phase 2 completion*

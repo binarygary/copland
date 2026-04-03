@@ -2,24 +2,21 @@
 
 namespace App\Services;
 
-use Anthropic\Client;
 use App\Config\GlobalConfig;
 use App\Data\ModelUsage;
 use App\Data\SelectionResult;
+use App\Support\AnthropicApiClient;
 use App\Support\AnthropicCostEstimator;
 use RuntimeException;
 
 class ClaudeSelectorService
 {
-    private Client $client;
-
     private string $model;
 
-    public function __construct(private GlobalConfig $config)
-    {
-        $this->client = new Client(
-            apiKey: $this->config->claudeApiKey(),
-        );
+    public function __construct(
+        private GlobalConfig $config,
+        private AnthropicApiClient $apiClient,
+    ) {
         $this->model = $this->config->selectorModel();
     }
 
@@ -40,7 +37,7 @@ class ClaudeSelectorService
             $promptTemplate
         );
 
-        $response = $this->client->messages->create(
+        $response = $this->apiClient->messages(
             model: $this->model,
             maxTokens: 1024,
             messages: [

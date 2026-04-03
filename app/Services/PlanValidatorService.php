@@ -37,6 +37,12 @@ class PlanValidatorService
             }
         }
 
+        foreach ($plan->filesToChange as $file) {
+            if (in_array($file, $plan->blockedWritePaths, true)) {
+                $errors[] = "file '{$file}' appears in both files_to_change and blocked_write_paths";
+            }
+        }
+
         $allowedCommands = $repoProfile['allowed_commands'] ?? [];
         foreach ($plan->commandsToRun as $command) {
             $allowed = false;

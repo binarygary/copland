@@ -9,11 +9,17 @@ class ExecutorPolicy
     public function __construct(
         private array $blockedPaths = [],
         private int $maxRounds = 12,
+        private int $readFileMaxLines = 300,
     ) {}
 
     public function maxRounds(): int
     {
         return $this->maxRounds;
+    }
+
+    public function readFileMaxLines(): int
+    {
+        return $this->readFileMaxLines;
     }
 
     public function assertToolPathAllowed(string $path, string $tool): string
@@ -33,6 +39,23 @@ class ExecutorPolicy
 
         if (! in_array($normalized, $allowedFilesToChange, true)) {
             throw new PolicyViolationException("Write to '{$normalized}' not listed in files_to_change");
+        }
+
+        return $normalized;
+    }
+
+    public function assertWritePathNotBlocked(string $path, array $blockedWritePaths): string
+    {
+        $normalized = $this->normalizePath($path);
+        $normalizedBlockedPaths = array_map(
+            fn (string $blockedPath): string => $this->normalizePath($blockedPath),
+            $blockedWritePaths
+        );
+
+        foreach ($normalizedBlockedPaths as $blockedPath) {
+            if ($normalized === $blockedPath || str_starts_with($normalized, $blockedPath.'/')) {
+                throw new PolicyViolationException("Write to '{$normalized}' blocked by blocked_write_paths");
+            }
         }
 
         return $normalized;

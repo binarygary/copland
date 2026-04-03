@@ -2,11 +2,11 @@
 
 namespace App\Services;
 
-use Anthropic\Client;
 use App\Config\GlobalConfig;
 use App\Data\ExecutionResult;
 use App\Data\PlanResult;
 use App\Exceptions\PolicyViolationException;
+use App\Support\AnthropicApiClient;
 use App\Support\AnthropicCostEstimator;
 use App\Support\AnthropicMessageSerializer;
 use App\Support\ExecutorPolicy;
@@ -19,15 +19,12 @@ use Throwable;
 
 class ClaudeExecutorService
 {
-    private Client $client;
-
     private string $model;
 
-    public function __construct(private GlobalConfig $config)
-    {
-        $this->client = new Client(
-            apiKey: $this->config->claudeApiKey(),
-        );
+    public function __construct(
+        private GlobalConfig $config,
+        private AnthropicApiClient $apiClient,
+    ) {
         $this->model = $this->config->executorModel();
     }
 
@@ -41,6 +38,7 @@ class ClaudeExecutorService
         $policy = new ExecutorPolicy(
             blockedPaths: $repoProfile['blocked_paths'] ?? [],
             maxRounds: (int) ($repoProfile['max_executor_rounds'] ?? 12),
+            readFileMaxLines: (int) ($repoProfile['read_file_max_lines'] ?? 300),
         );
 
         return $this->executeWithPolicy($workspacePath, $plan, $policy, $progressCallback, $snapshot);
@@ -53,6 +51,7 @@ class ClaudeExecutorService
             'branch_name' => $plan->branchName,
             'files_to_read' => $plan->filesToRead,
             'files_to_change' => $plan->filesToChange,
+            'blocked_write_paths' => $plan->blockedWritePaths,
             'steps' => $plan->steps,
             'commands_to_run' => $plan->commandsToRun,
             'tests_to_update' => $plan->testsToUpdate,
@@ -88,7 +87,7 @@ class ClaudeExecutorService
                 ExecutorProgressFormatter::waiting($round, count($toolCallLog), microtime(true) - $startTime)
             );
 
-            $response = $this->client->messages->create(
+            $response = $this->apiClient->messages(
                 model: $this->model,
                 maxTokens: 4096,
                 system: $systemPrompt,
@@ -292,19 +291,24 @@ class ClaudeExecutorService
             return "Error: file not found: {$normalizedPath}";
         }
 
-        return file_get_contents($fullPath);
+        $content = (string) file_get_contents($fullPath);
+        $lines = preg_split("/\r\n|\n|\r/", $content) ?: [];
+        $maxLines = $policy->readFileMaxLines();
+
+        if (count($lines) <= $maxLines) {
+            return $content;
+        }
+
+        $visibleLines = array_slice($lines, 0, $maxLines);
+        $omittedLines = count($lines) - $maxLines;
+
+        return implode("\n", $visibleLines)."\n[truncated after {$maxLines} lines; {$omittedLines} more lines omitted]";
     }
 
     private function writeFile(string $workspacePath, string $path, string $content, PlanResult $plan, ExecutorPolicy $policy): string
     {
         $normalizedPath = $policy->assertWritePathAllowed($path, $plan->filesToChange);
-
-        // Check against blocked paths (from plan guardrails)
-        foreach ($plan->guardrails as $guardrail) {
-            if (str_contains(strtolower($guardrail), 'block') && str_contains($guardrail, $normalizedPath)) {
-                throw new PolicyViolationException("Write to '{$normalizedPath}' blocked by guardrail: {$guardrail}");
-            }
-        }
+        $policy->assertWritePathNotBlocked($normalizedPath, $plan->blockedWritePaths);
 
         $fullPath = $workspacePath.'/'.ltrim($normalizedPath, '/');
         $dir = dirname($fullPath);
@@ -321,6 +325,7 @@ class ClaudeExecutorService
     private function replaceInFile(string $workspacePath, string $path, string $old, string $new, PlanResult $plan, ExecutorPolicy $policy): string
     {
         $normalizedPath = $policy->assertWritePathAllowed($path, $plan->filesToChange);
+        $policy->assertWritePathNotBlocked($normalizedPath, $plan->blockedWritePaths);
         $fullPath = $workspacePath.'/'.ltrim($normalizedPath, '/');
 
         if (! file_exists($fullPath)) {

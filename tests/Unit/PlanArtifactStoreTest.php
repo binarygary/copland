@@ -19,6 +19,7 @@ it('writes the latest plan artifact under the global copland runs directory', fu
         branchName: 'agent/issue-193',
         filesToRead: ['resources/js/app.js'],
         filesToChange: ['resources/js/app.js'],
+        blockedWritePaths: ['resources/js/blocked.js'],
         steps: ['Update toggle state'],
         commandsToRun: ['./vendor/bin/pest'],
         testsToUpdate: [],
@@ -39,6 +40,7 @@ it('writes the latest plan artifact under the global copland runs directory', fu
     expect($json['repo'])->toBe('Lone-Rock-Point/lrpbot');
     expect($json['issue']['number'])->toBe(193);
     expect($json['plan']['branch_name'])->toBe('agent/issue-193');
+    expect($json['plan']['blocked_write_paths'])->toBe(['resources/js/blocked.js']);
     expect($json['validation_errors'])->toBe(['command not allowed']);
 
     $_SERVER['HOME'] = $originalHome;
@@ -57,6 +59,7 @@ it('archives the previous last plan by issue number when a different issue is sa
         branchName: 'agent/issue-193',
         filesToRead: [],
         filesToChange: ['resources/js/app.js'],
+        blockedWritePaths: ['resources/js/blocked.js'],
         steps: ['Update toggle state'],
         commandsToRun: ['./vendor/bin/pest'],
         testsToUpdate: [],

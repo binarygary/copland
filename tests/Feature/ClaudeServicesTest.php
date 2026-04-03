@@ -1,9 +1,11 @@
 <?php
 
+use Anthropic\Client;
 use App\Config\GlobalConfig;
 use App\Services\ClaudeExecutorService;
 use App\Services\ClaudePlannerService;
 use App\Services\ClaudeSelectorService;
+use App\Support\AnthropicApiClient;
 
 it('constructs claude services with the installed anthropic sdk', function () {
     $originalHome = $_SERVER['HOME'] ?? null;
@@ -14,10 +16,15 @@ it('constructs claude services with the installed anthropic sdk', function () {
     $_SERVER['HOME'] = $home;
 
     $config = new GlobalConfig;
+    $apiClient = new AnthropicApiClient(
+        client: new Client(apiKey: $config->claudeApiKey()),
+        maxAttempts: $config->retryMaxAttempts(),
+        baseDelaySeconds: $config->retryBaseDelaySeconds(),
+    );
 
-    $selector = new ClaudeSelectorService($config);
-    $planner = new ClaudePlannerService($config);
-    $executor = new ClaudeExecutorService($config);
+    $selector = new ClaudeSelectorService($config, $apiClient);
+    $planner = new ClaudePlannerService($config, $apiClient);
+    $executor = new ClaudeExecutorService($config, $apiClient);
 
     expect($selector)->toBeInstanceOf(ClaudeSelectorService::class);
     expect($planner)->toBeInstanceOf(ClaudePlannerService::class);

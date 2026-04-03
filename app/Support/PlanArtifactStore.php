@@ -28,6 +28,7 @@ class PlanArtifactStore
                 'branch_name' => $plan->branchName,
                 'files_to_read' => $plan->filesToRead,
                 'files_to_change' => $plan->filesToChange,
+                'blocked_write_paths' => $plan->blockedWritePaths,
                 'steps' => $plan->steps,
                 'commands_to_run' => $plan->commandsToRun,
                 'tests_to_update' => $plan->testsToUpdate,
@@ -85,13 +86,7 @@ class PlanArtifactStore
 
     private function homeDirectory(): string
     {
-        $home = $_SERVER['HOME'] ?? null;
-
-        if (! is_string($home) || $home === '') {
-            throw new RuntimeException('HOME is not set.');
-        }
-
-        return rtrim($home, '/');
+        return HomeDirectory::resolve();
     }
 
     private function ensureDirectoryExists(string $directory): void

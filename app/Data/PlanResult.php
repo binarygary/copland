@@ -9,6 +9,7 @@ class PlanResult
         public readonly ?string $branchName,
         public readonly array $filesToRead,
         public readonly array $filesToChange,
+        public readonly array $blockedWritePaths,
         public readonly array $steps,
         public readonly array $commandsToRun,
         public readonly array $testsToUpdate,

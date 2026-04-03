@@ -2,6 +2,7 @@
 
 namespace App\Config;
 
+use App\Support\HomeDirectory;
 use RuntimeException;
 use Symfony\Component\Yaml\Yaml;
 
@@ -20,11 +21,7 @@ class GlobalConfig
 
     private function resolvePath(): string
     {
-        $home = $_SERVER['HOME'] ?? null;
-
-        if (! is_string($home) || $home === '') {
-            throw new RuntimeException('HOME is not set.');
-        }
+        $home = HomeDirectory::resolve();
 
         $preferred = $home.'/.copland.yml';
         $legacy = $home.'/.copland/config.yml';
@@ -64,6 +61,11 @@ defaults:
   max_files_changed: 3
   max_lines_changed: 250
   base_branch: main
+
+api:
+  retry:
+    max_attempts: 3
+    base_delay_seconds: 1
 YAML;
 
         if (file_put_contents($this->path, $default.PHP_EOL) === false) {
@@ -109,5 +111,15 @@ YAML;
     public function repos(): array
     {
         return $this->data['repos'] ?? [];
+    }
+
+    public function retryMaxAttempts(): int
+    {
+        return $this->data['api']['retry']['max_attempts'] ?? 3;
+    }
+
+    public function retryBaseDelaySeconds(): int
+    {
+        return $this->data['api']['retry']['base_delay_seconds'] ?? 1;
     }
 }

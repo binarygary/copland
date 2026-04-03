@@ -7,9 +7,9 @@
 
 ### Reliability
 
-- [ ] **RELY-01**: System recovers from transient Anthropic API errors (429/5xx) with exponential backoff, up to 3 retries, before failing a run
-- [ ] **RELY-02**: File reads in the executor are capped at a configurable line limit (default 300) with a truncation notice appended so Claude knows content was cut
-- [ ] **RELY-03**: Write protection is enforced via a structured `blocked_write_paths` list, not free-text guardrail parsing
+- [x] **RELY-01**: System recovers from transient Anthropic API errors (429/5xx) with exponential backoff, up to 3 retries, before failing a run
+- [x] **RELY-02**: File reads in the executor are capped at a configurable line limit (default 300) with a truncation notice appended so Claude knows content was cut
+- [x] **RELY-03**: Write protection is enforced via a structured `blocked_write_paths` list, not free-text guardrail parsing
 
 ### Observability
 
@@ -68,9 +68,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RELY-01 | Phase 1 | Pending |
-| RELY-02 | Phase 2 | Pending |
-| RELY-03 | Phase 2 | Pending |
+| RELY-01 | Phase 1 | Complete (2026-04-03) |
+| RELY-02 | Phase 2 | Complete (2026-04-03) |
+| RELY-03 | Phase 2 | Complete (2026-04-03) |
 | OBS-01 | Phase 3 | Pending |
 | OBS-02 | Phase 3 | Pending |
 | COST-01 | Phase 4 | Pending |
@@ -91,4 +91,4 @@
 
 ---
 *Requirements defined: 2026-04-02*
-*Last updated: 2026-04-02 after roadmap creation — traceability table populated*
+*Last updated: 2026-04-03 after Phase 2 verification and completion*

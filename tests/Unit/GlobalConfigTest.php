@@ -26,3 +26,18 @@ it('bootstraps a default home config file at ~/.copland.yml', function () {
 
     $_SERVER['HOME'] = $originalHome;
 });
+
+it('returns default retry config values when api.retry is not in config', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $home = sys_get_temp_dir().'/copland-global-config-retry-'.uniqid();
+
+    mkdir($home, 0755, true);
+    $_SERVER['HOME'] = $home;
+
+    $config = new GlobalConfig;
+
+    expect($config->retryMaxAttempts())->toBe(3);
+    expect($config->retryBaseDelaySeconds())->toBe(1);
+
+    $_SERVER['HOME'] = $originalHome;
+});

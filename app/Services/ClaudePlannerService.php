@@ -2,10 +2,10 @@
 
 namespace App\Services;
 
-use Anthropic\Client;
 use App\Config\GlobalConfig;
 use App\Data\ModelUsage;
 use App\Data\PlanResult;
+use App\Support\AnthropicApiClient;
 use App\Support\AnthropicCostEstimator;
 use App\Support\IssueFileHintExtractor;
 use App\Support\PlanFieldNormalizer;
@@ -13,15 +13,12 @@ use RuntimeException;
 
 class ClaudePlannerService
 {
-    private Client $client;
-
     private string $model;
 
-    public function __construct(private GlobalConfig $config)
-    {
-        $this->client = new Client(
-            apiKey: $this->config->claudeApiKey(),
-        );
+    public function __construct(
+        private GlobalConfig $config,
+        private AnthropicApiClient $apiClient,
+    ) {
         $this->model = $this->config->plannerModel();
     }
 
@@ -50,7 +47,7 @@ class ClaudePlannerService
             $promptTemplate
         );
 
-        $response = $this->client->messages->create(
+        $response = $this->apiClient->messages(
             model: $this->model,
             maxTokens: 2048,
             messages: [
@@ -72,6 +69,7 @@ class ClaudePlannerService
             branchName: $json['branch_name'] ?? null,
             filesToRead: PlanFieldNormalizer::list($json['files_to_read'] ?? []),
             filesToChange: PlanFieldNormalizer::list($json['files_to_change'] ?? []),
+            blockedWritePaths: PlanFieldNormalizer::list($json['blocked_write_paths'] ?? []),
             steps: PlanFieldNormalizer::list($json['steps'] ?? []),
             commandsToRun: PlanFieldNormalizer::list($json['commands_to_run'] ?? []),
             testsToUpdate: PlanFieldNormalizer::list($json['tests_to_update'] ?? []),

@@ -12,8 +12,8 @@ Copland already resolves GitHub issues overnight — the pipeline exists and wor
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: API Retry/Backoff** - Introduce AnthropicApiClient wrapper so transient 429/5xx errors no longer kill overnight runs
-- [ ] **Phase 2: Executor Hardening** - Cap file reads and enforce structured write protection so context stays bounded and guardrails are reliable
+- [x] **Phase 1: API Retry/Backoff** - Introduce AnthropicApiClient wrapper so transient 429/5xx errors no longer kill overnight runs
+- [x] **Phase 2: Executor Hardening** - Cap file reads and enforce structured write protection so context stays bounded and guardrails are reliable
 - [ ] **Phase 3: Structured Run Log** - Persist a JSON Lines run log and surface cost in CLI output so every morning is reviewable
 - [ ] **Phase 4: Prompt Caching** - Add cache_control to executor system prompt so rounds 2-12 pay ~10% of normal system-prompt input cost
 - [ ] **Phase 5: Cache-Aware Cost Model** - Update ModelUsage and AnthropicCostEstimator to track cache-write/read tokens at correct rates
@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. A 5xx network error is retried up to 3 times before a run is declared failed
   3. A 400 or 401 error is NOT retried — the run fails immediately with a clear reason
   4. Retry attempt count and delay are configurable in ~/.copland.yml
-**Plans**: TBD
+**Plans**: 4
 
 ### Phase 2: Executor Hardening
 **Goal**: File reads are bounded and write protection is enforced by structured config, not fragile text parsing
@@ -46,7 +46,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. A read of a 2000-line file does not send all 2000 lines into conversation history on every subsequent round
   3. Write protection is enforced against an explicit blocked_write_paths array in the plan, not against free-text guardrail strings
   4. A write to a blocked path is rejected even if the guardrail text would not have matched the old heuristic
-**Plans**: TBD
+**Plans**: 4
 
 ### Phase 3: Structured Run Log
 **Goal**: Every run appends a machine-readable event log and displays a cost summary so the morning review requires no GitHub login
@@ -57,7 +57,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. A mid-run crash still produces a partial log entry — the file is not empty the next morning
   3. The CLI output at run completion shows a cost summary line with selector, planner, and executor token counts and estimated USD
   4. Running tail on the log file and piping to jq shows a structured, readable record of what happened
-**Plans**: TBD
+**Plans**: 4
 
 ### Phase 4: Prompt Caching
 **Goal**: Executor system prompt is cached across all 12 rounds so rounds 2-12 pay ~10% of normal system-prompt input cost
@@ -153,9 +153,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. API Retry/Backoff | 0/TBD | Not started | - |
-| 2. Executor Hardening | 0/TBD | Not started | - |
-| 3. Structured Run Log | 0/TBD | Not started | - |
+| 1. API Retry/Backoff | 4/4 | Complete | 2026-04-03 |
+| 2. Executor Hardening | 4/4 | Complete | 2026-04-03 |
+| 3. Structured Run Log | 0/4 | Planned | - |
 | 4. Prompt Caching | 0/TBD | Not started | - |
 | 5. Cache-Aware Cost Model | 0/TBD | Not started | - |
 | 6. Multi-Repo Runner | 0/TBD | Not started | - |

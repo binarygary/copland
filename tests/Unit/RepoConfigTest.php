@@ -13,11 +13,13 @@ it('bootstraps a default repo config file when missing', function () {
     expect(file_exists($path))->toBeTrue();
     expect($config->baseBranch())->toBe('main');
     expect($config->maxExecutorRounds())->toBe(12);
+    expect($config->readFileMaxLines())->toBe(300);
     expect($config->requiredLabels())->toBe(['agent-ready']);
     expect($config->blockedLabels())->toBe(['agent-skip', 'blocked']);
     expect($config->allowedCommands())->toBe(['php artisan', 'composer', 'npm', 'pest']);
     expect(file_get_contents($path))->toContain('base_branch: main');
     expect(file_get_contents($path))->toContain('max_executor_rounds: 12');
+    expect(file_get_contents($path))->toContain('read_file_max_lines: 300');
     expect(file_get_contents($path))->not->toContain('worktree_base');
     expect(file_get_contents($path))->toContain('repo_summary: ""');
 });
