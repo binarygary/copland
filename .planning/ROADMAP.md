@@ -67,7 +67,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. An executor run of 12 rounds shows cache_creation_input_tokens on round 1 and cache_read_input_tokens on rounds 2-12
   2. The system prompt is sent as an array with cache_control: {type: ephemeral} rather than a bare string
   3. Placing the cache marker on the system prompt (not on messages) means the cache is not invalidated as conversation history grows
-**Plans**: TBD
+**Plans**: 1
+**Plan list**:
+- [ ] 04-01-PLAN.md — Implement prompt caching for the executor system prompt
 
 ### Phase 5: Cache-Aware Cost Model
 **Goal**: Reported per-run costs accurately reflect cache-write and cache-read token rates, not a flat input token rate
@@ -156,7 +158,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. API Retry/Backoff | 4/4 | Complete | 2026-04-03 |
 | 2. Executor Hardening | 4/4 | Complete | 2026-04-03 |
 | 3. Structured Run Log | 4/4 | Complete | 2026-04-03 |
-| 4. Prompt Caching | 0/TBD | Not started | - |
+| 4. Prompt Caching | 0/1 | Planned | - |
 | 5. Cache-Aware Cost Model | 0/TBD | Not started | - |
 | 6. Multi-Repo Runner | 0/TBD | Not started | - |
 | 7. Launchd Setup | 0/TBD | Not started | - |
