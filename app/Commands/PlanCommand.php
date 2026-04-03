@@ -26,11 +26,11 @@ class PlanCommand extends Command
         $progress = new ProgressReporter(totalSteps: 6);
 
         $this->line($progress->step('Resolve repository'));
-        $repo = (new CurrentRepoGuardService())->resolve($this->argument('repo'));
+        $repo = (new CurrentRepoGuardService)->resolve($this->argument('repo'));
         $this->line($progress->detail("Using repo {$repo}"));
 
         $this->line($progress->step('Load configuration'));
-        $globalConfig = new GlobalConfig();
+        $globalConfig = new GlobalConfig;
         $repoConfig = new RepoConfig(getcwd());
 
         $repoProfile = [
@@ -43,12 +43,12 @@ class PlanCommand extends Command
         ];
 
         $this->line($progress->step('Fetch and prefilter issues'));
-        $github = new GitHubService();
+        $github = new GitHubService;
         $issues = $github->getIssues($repo, $repoConfig->requiredLabels());
 
         $prefilter = new IssuePrefilterService($repoConfig, $github, $repo);
         $prefiltered = $prefilter->filter($issues);
-        $this->line($progress->detail(count($prefiltered->accepted) . ' accepted, ' . count($prefiltered->rejected) . ' rejected'));
+        $this->line($progress->detail(count($prefiltered->accepted).' accepted, '.count($prefiltered->rejected).' rejected'));
 
         $this->line($progress->step('Run Claude selector'));
         $selector = new ClaudeSelectorService($globalConfig);
@@ -59,6 +59,7 @@ class PlanCommand extends Command
 
         if ($selection->decision === 'skip_all') {
             $this->line('No suitable issue found. Exiting.');
+
             return;
         }
 
@@ -72,6 +73,7 @@ class PlanCommand extends Command
 
         if ($selectedIssue === null) {
             $this->error("Selected issue #{$selection->selectedIssueNumber} not found in prefiltered list.");
+
             return;
         }
 
@@ -85,6 +87,7 @@ class PlanCommand extends Command
 
         if ($plan->decision === 'decline') {
             $this->line("Decline reason: {$plan->declineReason}");
+
             return;
         }
 
@@ -97,7 +100,7 @@ class PlanCommand extends Command
         $this->line('');
         $this->line('Steps:');
         foreach ($plan->steps as $i => $step) {
-            $this->line('  ' . ($i + 1) . '. ' . $step);
+            $this->line('  '.($i + 1).'. '.$step);
         }
         $this->line('');
         $this->line('Commands to run:');
@@ -106,10 +109,10 @@ class PlanCommand extends Command
         }
 
         $this->line($progress->step('Validate plan'));
-        $validator = new PlanValidatorService();
+        $validator = new PlanValidatorService;
         $errors = $validator->validate($plan, $repoProfile);
 
-        $artifactPath = (new PlanArtifactStore())->save($repo, $selectedIssue, $plan, $errors);
+        $artifactPath = (new PlanArtifactStore)->save($repo, $selectedIssue, $plan, $errors);
 
         if (! empty($errors)) {
             $this->line('');
@@ -126,9 +129,9 @@ class PlanCommand extends Command
 
         $this->line('');
         $this->line('Usage:');
-        $this->line('  - Selector: ' . AnthropicCostEstimator::format($selection->usage));
-        $this->line('  - Planner: ' . AnthropicCostEstimator::format($plan->usage));
+        $this->line('  - Selector: '.AnthropicCostEstimator::format($selection->usage));
+        $this->line('  - Planner: '.AnthropicCostEstimator::format($plan->usage));
         $total = AnthropicCostEstimator::combine($selection->usage, $plan->usage);
-        $this->line('  - Total: ' . AnthropicCostEstimator::format($total));
+        $this->line('  - Total: '.AnthropicCostEstimator::format($total));
     }
 }

@@ -15,7 +15,7 @@ it('prepares a new execution branch in the current checkout', function () {
             ['git', 'pull', '--ff-only', 'origin', 'main'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
             ['git', 'rev-parse', '--verify', 'agent/test-branch'] => ['stdout' => '', 'stderr' => 'fatal: Needed a single revision', 'exitCode' => 128],
             ['git', 'switch', '-c', 'agent/test-branch'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
-            default => throw new RuntimeException('Unexpected command: ' . implode(' ', $command)),
+            default => throw new RuntimeException('Unexpected command: '.implode(' ', $command)),
         };
     });
 
@@ -44,7 +44,7 @@ it('switches to an existing execution branch after syncing base', function () {
             ['git', 'pull', '--ff-only', 'origin', 'main'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
             ['git', 'rev-parse', '--verify', 'agent/test-branch'] => ['stdout' => 'abc123', 'stderr' => '', 'exitCode' => 0],
             ['git', 'switch', 'agent/test-branch'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
-            default => throw new RuntimeException('Unexpected command: ' . implode(' ', $command)),
+            default => throw new RuntimeException('Unexpected command: '.implode(' ', $command)),
         };
     });
 
@@ -68,7 +68,7 @@ it('refuses to prepare an execution branch from a dirty checkout', function () {
 
         return match ($command) {
             ['git', 'status', '--porcelain'] => ['stdout' => " M app/Example.php\n", 'stderr' => '', 'exitCode' => 0],
-            default => throw new RuntimeException('Unexpected command: ' . implode(' ', $command)),
+            default => throw new RuntimeException('Unexpected command: '.implode(' ', $command)),
         };
     });
 
@@ -93,7 +93,7 @@ it('ignores a repo-local .copland.yml file when checking for dirtiness', functio
             ['git', 'pull', '--ff-only', 'origin', 'main'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
             ['git', 'rev-parse', '--verify', 'agent/test-branch'] => ['stdout' => '', 'stderr' => 'fatal: Needed a single revision', 'exitCode' => 128],
             ['git', 'switch', '-c', 'agent/test-branch'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
-            default => throw new RuntimeException('Unexpected command: ' . implode(' ', $command)),
+            default => throw new RuntimeException('Unexpected command: '.implode(' ', $command)),
         };
     });
 

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Data\RunResult;
 use App\Support\PlanArtifactStore;
 use App\Support\RunProgressSnapshot;
+
 class RunOrchestratorService
 {
     private array $log = [];
@@ -32,7 +33,7 @@ class RunOrchestratorService
         $this->pushLog("[1/8] Fetching issues for {$repo}");
         $issues = $this->github->getIssues($repo, $repoProfile['required_labels'] ?? ['agent-ready']);
         $prefiltered = $this->prefilter->filter($issues);
-        $this->pushLog('      ' . count($prefiltered->accepted) . ' accepted, ' . count($prefiltered->rejected) . ' rejected after prefilter');
+        $this->pushLog('      '.count($prefiltered->accepted).' accepted, '.count($prefiltered->rejected).' rejected after prefilter');
 
         // Step 2: Claude select
         $this->pushLog('[2/8] Running Claude selector');
@@ -103,12 +104,13 @@ class RunOrchestratorService
         // Step 4: Validate plan
         $this->pushLog('[4/8] Validating plan');
         $validationErrors = $this->validator->validate($plan, $repoProfile);
-        $artifactPath = (new PlanArtifactStore())->save($repo, $selectedIssue, $plan, $validationErrors);
+        $artifactPath = (new PlanArtifactStore)->save($repo, $selectedIssue, $plan, $validationErrors);
         $this->pushLog("      Saved plan artifact to {$artifactPath}");
 
         if (! empty($validationErrors)) {
             $reason = implode('; ', $validationErrors);
             $this->pushLog("      Plan validation failed: {$reason}");
+
             return new RunResult(
                 status: 'failed',
                 prUrl: null,

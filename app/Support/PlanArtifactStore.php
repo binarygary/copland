@@ -12,7 +12,7 @@ class PlanArtifactStore
         $directory = $this->directoryForRepo($repo);
         $this->ensureDirectoryExists($directory);
 
-        $lastPlanPath = $directory . '/last-plan.json';
+        $lastPlanPath = $directory.'/last-plan.json';
         $this->archivePreviousLastPlan($lastPlanPath, (int) ($issue['number'] ?? 0));
 
         $payload = [
@@ -47,7 +47,7 @@ class PlanArtifactStore
             throw new RuntimeException('Failed to encode plan artifact as JSON.');
         }
 
-        if (file_put_contents($lastPlanPath, $json . PHP_EOL) === false) {
+        if (file_put_contents($lastPlanPath, $json.PHP_EOL) === false) {
             throw new RuntimeException("Failed to write plan artifact to {$lastPlanPath}");
         }
 
@@ -67,7 +67,7 @@ class PlanArtifactStore
             return;
         }
 
-        $archivePath = dirname($lastPlanPath) . "/issue-{$existingIssueNumber}.json";
+        $archivePath = dirname($lastPlanPath)."/issue-{$existingIssueNumber}.json";
 
         if (file_exists($archivePath) && ! unlink($archivePath)) {
             throw new RuntimeException("Failed to replace archived plan artifact at {$archivePath}");
@@ -80,7 +80,7 @@ class PlanArtifactStore
 
     private function directoryForRepo(string $repo): string
     {
-        return $this->homeDirectory() . '/.copland/runs/' . str_replace('/', '__', $repo);
+        return $this->homeDirectory().'/.copland/runs/'.str_replace('/', '__', $repo);
     }
 
     private function homeDirectory(): string

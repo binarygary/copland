@@ -4,14 +4,14 @@ use App\Config\GlobalConfig;
 
 it('bootstraps a default home config file at ~/.copland.yml', function () {
     $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir() . '/copland-global-config-' . uniqid();
+    $home = sys_get_temp_dir().'/copland-global-config-'.uniqid();
 
     mkdir($home, 0755, true);
     $_SERVER['HOME'] = $home;
 
-    $config = new GlobalConfig();
+    $config = new GlobalConfig;
 
-    $path = $home . '/.copland.yml';
+    $path = $home.'/.copland.yml';
 
     expect($config->claudeApiKey())->toBe('');
     expect($config->selectorModel())->toBe('claude-haiku-4-5');

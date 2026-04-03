@@ -57,7 +57,7 @@ class ExecutorPolicy
         return array_values(array_filter($entries, function (string $entry) use ($normalizedDirectory): bool {
             $candidate = $normalizedDirectory === '.'
                 ? $entry
-                : $normalizedDirectory . '/' . $entry;
+                : $normalizedDirectory.'/'.$entry;
 
             return ! $this->isBlockedPath($candidate);
         }));
@@ -66,7 +66,7 @@ class ExecutorPolicy
     private function isBlockedPath(string $path): bool
     {
         foreach ($this->allBlockedPaths() as $blockedPath) {
-            if ($path === $blockedPath || str_starts_with($path, $blockedPath . '/')) {
+            if ($path === $blockedPath || str_starts_with($path, $blockedPath.'/')) {
                 return true;
             }
         }
@@ -109,6 +109,7 @@ class ExecutorPolicy
                 }
 
                 array_pop($segments);
+
                 continue;
             }
 

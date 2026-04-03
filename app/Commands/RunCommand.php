@@ -32,16 +32,16 @@ class RunCommand extends Command implements SignalableCommandInterface
     public function handle(): int
     {
         $progress = new ProgressReporter(totalSteps: 2);
-        $this->snapshot = new RunProgressSnapshot();
+        $this->snapshot = new RunProgressSnapshot;
 
         $this->line($progress->step('Resolve repository'));
-        $repo = (new CurrentRepoGuardService())->resolve($this->argument('repo'));
+        $repo = (new CurrentRepoGuardService)->resolve($this->argument('repo'));
         $this->line($progress->detail("Using repo {$repo}"));
 
         $this->line($progress->step('Load configuration and start run'));
-        $globalConfig = new GlobalConfig();
+        $globalConfig = new GlobalConfig;
         $repoConfig = new RepoConfig(getcwd());
-        $git = new GitService();
+        $git = new GitService;
 
         $repoProfile = [
             'repo_summary' => $repoConfig->repoSummary(),
@@ -56,11 +56,11 @@ class RunCommand extends Command implements SignalableCommandInterface
         ];
 
         $orchestrator = new RunOrchestratorService(
-            github: new GitHubService(),
-            prefilter: new IssuePrefilterService($repoConfig, new GitHubService(), $repo),
+            github: new GitHubService,
+            prefilter: new IssuePrefilterService($repoConfig, new GitHubService, $repo),
             selector: new ClaudeSelectorService($globalConfig),
             planner: new ClaudePlannerService($globalConfig),
-            validator: new PlanValidatorService(),
+            validator: new PlanValidatorService,
             workspace: new WorkspaceService($repoConfig, $git),
             git: $git,
             executor: new ClaudeExecutorService($globalConfig),
@@ -79,8 +79,9 @@ class RunCommand extends Command implements SignalableCommandInterface
 
         match ($result->status) {
             'succeeded' => $this->info("✅ Succeeded — PR: {$result->prUrl}"),
-            'skipped'   => $this->warn("⏭  Skipped — {$result->failureReason}"),
-            'failed'    => $this->error("❌ Failed — {$result->failureReason}"),
+            'skipped' => $this->warn("⏭  Skipped — {$result->failureReason}"),
+            'failed' => $this->error("❌ Failed — {$result->failureReason}"),
+            default => $this->error("❌ Unknown status: {$result->status}"),
         };
 
         return $result->status === 'succeeded' ? self::SUCCESS : self::FAILURE;
@@ -121,17 +122,17 @@ class RunCommand extends Command implements SignalableCommandInterface
         string $heading = 'Usage:'
     ): void {
         $this->line($heading);
-        $this->line('  - Selector: ' . AnthropicCostEstimator::format($selectorUsage));
-        $this->line('  - Planner: ' . AnthropicCostEstimator::format($plannerUsage));
-        $this->line('  - Executor: ' . AnthropicCostEstimator::format($executorUsage));
+        $this->line('  - Selector: '.AnthropicCostEstimator::format($selectorUsage));
+        $this->line('  - Planner: '.AnthropicCostEstimator::format($plannerUsage));
+        $this->line('  - Executor: '.AnthropicCostEstimator::format($executorUsage));
         $total = AnthropicCostEstimator::combine(
             $selectorUsage,
             $plannerUsage,
             $executorUsage,
         );
-        $this->line('  - Total: ' . AnthropicCostEstimator::format($total));
+        $this->line('  - Total: '.AnthropicCostEstimator::format($total));
         if ($executorDurationSeconds !== null) {
-            $this->line('  - Executor elapsed: ' . (int) round($executorDurationSeconds) . 's');
+            $this->line('  - Executor elapsed: '.(int) round($executorDurationSeconds).'s');
         }
         $this->line('');
     }

@@ -5,7 +5,7 @@ use App\Support\IssueFileHintExtractor;
 it('extracts repo file paths from issue title and body without relying on a fixed label', function () {
     $paths = IssueFileHintExtractor::extract([
         'title' => 'Fix toggle in resources/views/components/repos/table.blade.php',
-        'body' => <<<TEXT
+        'body' => <<<'TEXT'
 Bug occurs at /repos view
 
 Affected component:

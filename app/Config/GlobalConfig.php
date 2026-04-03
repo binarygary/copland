@@ -8,6 +8,7 @@ use Symfony\Component\Yaml\Yaml;
 class GlobalConfig
 {
     private array $data;
+
     private string $path;
 
     public function __construct()
@@ -25,8 +26,8 @@ class GlobalConfig
             throw new RuntimeException('HOME is not set.');
         }
 
-        $preferred = $home . '/.copland.yml';
-        $legacy = $home . '/.copland/config.yml';
+        $preferred = $home.'/.copland.yml';
+        $legacy = $home.'/.copland/config.yml';
 
         if (file_exists($preferred)) {
             return $preferred;
@@ -65,7 +66,7 @@ defaults:
   base_branch: main
 YAML;
 
-        if (file_put_contents($this->path, $default . PHP_EOL) === false) {
+        if (file_put_contents($this->path, $default.PHP_EOL) === false) {
             throw new RuntimeException("Failed to create global config at {$this->path}");
         }
     }

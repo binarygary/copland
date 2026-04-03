@@ -2,16 +2,17 @@
 
 namespace App\Services;
 
+use Anthropic\Client;
 use App\Config\GlobalConfig;
 use App\Data\ModelUsage;
 use App\Data\SelectionResult;
 use App\Support\AnthropicCostEstimator;
-use Anthropic\Client;
 use RuntimeException;
 
 class ClaudeSelectorService
 {
     private Client $client;
+
     private string $model;
 
     public function __construct(private GlobalConfig $config)
@@ -26,11 +27,11 @@ class ClaudeSelectorService
     {
         $promptTemplate = file_get_contents(base_path('resources/prompts/selector.md'));
 
-        $issuesSummary = array_map(fn($i) => [
+        $issuesSummary = array_map(fn ($i) => [
             'number' => $i['number'],
             'title' => $i['title'],
             'body' => substr($i['body'] ?? '', 0, 500),
-            'labels' => array_map(fn($l) => $l['name'], $i['labels'] ?? []),
+            'labels' => array_map(fn ($l) => $l['name'], $i['labels'] ?? []),
         ], $issues);
 
         $prompt = str_replace(
@@ -74,7 +75,7 @@ class ClaudeSelectorService
         $data = json_decode(trim($text), true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new RuntimeException("Selector returned invalid JSON: " . json_last_error_msg());
+            throw new RuntimeException('Selector returned invalid JSON: '.json_last_error_msg());
         }
 
         return $data;

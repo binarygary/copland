@@ -1,8 +1,8 @@
 <?php
 
-use App\Support\AnthropicMessageSerializer;
 use Anthropic\Messages\TextBlock;
 use Anthropic\Messages\ToolUseBlock;
+use App\Support\AnthropicMessageSerializer;
 
 it('serializes assistant content blocks into valid input shapes', function () {
     $text = TextBlock::with(citations: null, text: 'Done');

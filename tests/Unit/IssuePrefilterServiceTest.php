@@ -5,7 +5,7 @@ use App\Services\GitHubService;
 use App\Services\IssuePrefilterService;
 
 it('rejects issues that already have an open linked pr', function () {
-    $repoPath = sys_get_temp_dir() . '/copland-prefilter-' . uniqid();
+    $repoPath = sys_get_temp_dir().'/copland-prefilter-'.uniqid();
     mkdir($repoPath, 0755, true);
     $config = new RepoConfig($repoPath);
 

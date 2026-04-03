@@ -2,18 +2,19 @@
 
 namespace App\Services;
 
+use Anthropic\Client;
 use App\Config\GlobalConfig;
 use App\Data\ModelUsage;
 use App\Data\PlanResult;
+use App\Support\AnthropicCostEstimator;
 use App\Support\IssueFileHintExtractor;
 use App\Support\PlanFieldNormalizer;
-use App\Support\AnthropicCostEstimator;
-use Anthropic\Client;
 use RuntimeException;
 
 class ClaudePlannerService
 {
     private Client $client;
+
     private string $model;
 
     public function __construct(private GlobalConfig $config)
@@ -93,7 +94,7 @@ class ClaudePlannerService
         $data = json_decode(trim($text), true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new RuntimeException("Planner returned invalid JSON: " . json_last_error_msg());
+            throw new RuntimeException('Planner returned invalid JSON: '.json_last_error_msg());
         }
 
         return $data;

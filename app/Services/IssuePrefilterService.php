@@ -37,7 +37,7 @@ class IssuePrefilterService
             return 'missing body';
         }
 
-        $text = strtolower($issue['title'] . ' ' . $issue['body']);
+        $text = strtolower($issue['title'].' '.$issue['body']);
 
         foreach ($this->config->riskyKeywords() as $keyword) {
             if (str_contains($text, strtolower($keyword))) {
@@ -45,7 +45,7 @@ class IssuePrefilterService
             }
         }
 
-        $issueLabels = array_map(fn($l) => $l['name'], $issue['labels'] ?? []);
+        $issueLabels = array_map(fn ($l) => $l['name'], $issue['labels'] ?? []);
 
         foreach ($this->config->blockedLabels() as $blocked) {
             if (in_array($blocked, $issueLabels)) {

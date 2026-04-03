@@ -3,12 +3,12 @@
 use App\Config\RepoConfig;
 
 it('bootstraps a default repo config file when missing', function () {
-    $repoPath = sys_get_temp_dir() . '/copland-repo-config-' . uniqid();
+    $repoPath = sys_get_temp_dir().'/copland-repo-config-'.uniqid();
     mkdir($repoPath, 0755, true);
 
     $config = new RepoConfig($repoPath);
 
-    $path = $repoPath . '/.copland.yml';
+    $path = $repoPath.'/.copland.yml';
 
     expect(file_exists($path))->toBeTrue();
     expect($config->baseBranch())->toBe('main');

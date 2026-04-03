@@ -2,24 +2,25 @@
 
 namespace App\Services;
 
+use Anthropic\Client;
 use App\Config\GlobalConfig;
 use App\Data\ExecutionResult;
 use App\Data\PlanResult;
 use App\Exceptions\PolicyViolationException;
-use App\Support\AnthropicMessageSerializer;
 use App\Support\AnthropicCostEstimator;
-use App\Support\ExecutorProgressFormatter;
+use App\Support\AnthropicMessageSerializer;
 use App\Support\ExecutorPolicy;
+use App\Support\ExecutorProgressFormatter;
 use App\Support\ExecutorRunState;
 use App\Support\FileMutationHelper;
 use App\Support\RunProgressSnapshot;
-use Anthropic\Client;
-use Throwable;
 use Symfony\Component\Process\Process;
+use Throwable;
 
 class ClaudeExecutorService
 {
     private Client $client;
+
     private string $model;
 
     public function __construct(private GlobalConfig $config)
@@ -32,7 +33,7 @@ class ClaudeExecutorService
 
     public function execute(string $workspacePath, PlanResult $plan, ?callable $progressCallback = null): ExecutionResult
     {
-        return $this->executeWithPolicy($workspacePath, $plan, new ExecutorPolicy(), $progressCallback);
+        return $this->executeWithPolicy($workspacePath, $plan, new ExecutorPolicy, $progressCallback);
     }
 
     public function executeWithRepoProfile(string $workspacePath, PlanResult $plan, array $repoProfile, ?callable $progressCallback = null, ?RunProgressSnapshot $snapshot = null): ExecutionResult
@@ -125,6 +126,7 @@ class ClaudeExecutorService
                         $finalText .= $block->text;
                     }
                 }
+
                 return new ExecutionResult(
                     success: true,
                     summary: $finalText,
@@ -276,19 +278,20 @@ class ClaudeExecutorService
     private function formatToolError(Throwable $e): string
     {
         if ($e instanceof PolicyViolationException) {
-            return 'Policy violation: ' . $e->getMessage();
+            return 'Policy violation: '.$e->getMessage();
         }
 
-        return 'Tool execution error: ' . $e->getMessage();
+        return 'Tool execution error: '.$e->getMessage();
     }
 
     private function readFile(string $workspacePath, string $path, ExecutorPolicy $policy): string
     {
         $normalizedPath = $policy->assertToolPathAllowed($path, 'read_file');
-        $fullPath = $workspacePath . '/' . ltrim($normalizedPath, '/');
+        $fullPath = $workspacePath.'/'.ltrim($normalizedPath, '/');
         if (! file_exists($fullPath)) {
             return "Error: file not found: {$normalizedPath}";
         }
+
         return file_get_contents($fullPath);
     }
 
@@ -303,7 +306,7 @@ class ClaudeExecutorService
             }
         }
 
-        $fullPath = $workspacePath . '/' . ltrim($normalizedPath, '/');
+        $fullPath = $workspacePath.'/'.ltrim($normalizedPath, '/');
         $dir = dirname($fullPath);
 
         if (! is_dir($dir)) {
@@ -311,13 +314,14 @@ class ClaudeExecutorService
         }
 
         file_put_contents($fullPath, $content);
+
         return "Written: {$normalizedPath}";
     }
 
     private function replaceInFile(string $workspacePath, string $path, string $old, string $new, PlanResult $plan, ExecutorPolicy $policy): string
     {
         $normalizedPath = $policy->assertWritePathAllowed($path, $plan->filesToChange);
-        $fullPath = $workspacePath . '/' . ltrim($normalizedPath, '/');
+        $fullPath = $workspacePath.'/'.ltrim($normalizedPath, '/');
 
         if (! file_exists($fullPath)) {
             return "Error: file not found: {$normalizedPath}";
@@ -339,7 +343,8 @@ class ClaudeExecutorService
         $process->setTimeout(120);
         $process->run();
 
-        $output = $process->getOutput() . $process->getErrorOutput();
+        $output = $process->getOutput().$process->getErrorOutput();
+
         return $process->isSuccessful()
             ? "Exit 0:\n{$output}"
             : "Exit {$process->getExitCode()}:\n{$output}";
@@ -348,16 +353,17 @@ class ClaudeExecutorService
     private function listDirectory(string $workspacePath, string $path, ExecutorPolicy $policy, ExecutorRunState $runState): string
     {
         if (! $runState->canListDirectory()) {
-            return 'Error: read planner-provided files first: ' . implode(', ', $runState->pendingPlannedReads());
+            return 'Error: read planner-provided files first: '.implode(', ', $runState->pendingPlannedReads());
         }
 
         $normalizedPath = $policy->assertToolPathAllowed($path, 'list_directory');
-        $fullPath = $workspacePath . '/' . ltrim($normalizedPath, '/');
+        $fullPath = $workspacePath.'/'.ltrim($normalizedPath, '/');
         if (! is_dir($fullPath)) {
             return "Error: directory not found: {$normalizedPath}";
         }
         $files = array_diff(scandir($fullPath), ['.', '..']);
         $files = $policy->visibleEntries($normalizedPath, array_values($files));
+
         return implode("\n", array_values($files));
     }
 

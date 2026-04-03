@@ -7,11 +7,12 @@ use Symfony\Component\Yaml\Yaml;
 class RepoConfig
 {
     private array $data;
+
     private string $path;
 
     public function __construct(string $repoPath)
     {
-        $this->path = rtrim($repoPath, '/') . '/.copland.yml';
+        $this->path = rtrim($repoPath, '/').'/.copland.yml';
         $this->ensureExists();
         $this->data = Yaml::parseFile($this->path) ?? [];
     }
@@ -50,7 +51,7 @@ repo_summary: ""
 conventions: ""
 YAML;
 
-        file_put_contents($this->path, $default . PHP_EOL);
+        file_put_contents($this->path, $default.PHP_EOL);
     }
 
     public function baseBranch(): string

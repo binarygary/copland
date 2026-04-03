@@ -4,7 +4,7 @@ use App\Exceptions\PolicyViolationException;
 use App\Support\ExecutorPolicy;
 
 it('blocks git metadata access and path traversal', function () {
-    $policy = new ExecutorPolicy();
+    $policy = new ExecutorPolicy;
 
     expect(fn () => $policy->assertToolPathAllowed('.git/HEAD', 'read_file'))
         ->toThrow(PolicyViolationException::class);
@@ -14,7 +14,7 @@ it('blocks git metadata access and path traversal', function () {
 });
 
 it('requires write targets to be listed in files_to_change', function () {
-    $policy = new ExecutorPolicy();
+    $policy = new ExecutorPolicy;
 
     expect($policy->assertWritePathAllowed('resources/views/example.blade.php', [
         'resources/views/example.blade.php',
@@ -26,7 +26,7 @@ it('requires write targets to be listed in files_to_change', function () {
 });
 
 it('requires exact command matches against the plan', function () {
-    $policy = new ExecutorPolicy();
+    $policy = new ExecutorPolicy;
 
     expect($policy->assertCommandAllowed('./vendor/bin/pest', [
         './vendor/bin/pest',

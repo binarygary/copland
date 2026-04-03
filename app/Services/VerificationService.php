@@ -19,7 +19,8 @@ class VerificationService
         $failures = [];
 
         if (! $result->success) {
-            $failures[] = 'Execution did not succeed: ' . $result->summary;
+            $failures[] = 'Execution did not succeed: '.$result->summary;
+
             return new VerificationResult(false, $failures);
         }
 

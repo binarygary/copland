@@ -26,6 +26,7 @@ class GitService
 
         if ($this->branchExists($repoPath, $branch)) {
             $this->run(['git', 'switch', $branch], $repoPath, "git switch failed for branch '{$branch}'");
+
             return;
         }
 
@@ -38,10 +39,11 @@ class GitService
         $process->run();
 
         if (! $process->isSuccessful()) {
-            throw new RuntimeException("git diff failed: " . $process->getErrorOutput());
+            throw new RuntimeException('git diff failed: '.$process->getErrorOutput());
         }
 
         $output = trim($process->getOutput());
+
         return $output !== '' ? explode("\n", $output) : [];
     }
 
@@ -51,7 +53,7 @@ class GitService
         $process->run();
 
         if (! $process->isSuccessful()) {
-            throw new RuntimeException("git diff --stat failed: " . $process->getErrorOutput());
+            throw new RuntimeException('git diff --stat failed: '.$process->getErrorOutput());
         }
 
         $output = $process->getOutput();
@@ -111,7 +113,7 @@ class GitService
         $result = $this->execute($command, $cwd);
 
         if ($result['exitCode'] !== 0) {
-            throw new RuntimeException("{$errorMessage}: " . $result['stderr']);
+            throw new RuntimeException("{$errorMessage}: ".$result['stderr']);
         }
     }
 
@@ -120,7 +122,7 @@ class GitService
         $result = $this->execute($command, $cwd);
 
         if ($result['exitCode'] !== 0) {
-            throw new RuntimeException("{$errorMessage}: " . $result['stderr']);
+            throw new RuntimeException("{$errorMessage}: ".$result['stderr']);
         }
 
         return $result['stdout'];

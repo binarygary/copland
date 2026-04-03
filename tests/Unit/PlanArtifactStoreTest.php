@@ -5,11 +5,11 @@ use App\Support\PlanArtifactStore;
 
 it('writes the latest plan artifact under the global copland runs directory', function () {
     $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir() . '/copland-plan-artifacts-' . uniqid();
+    $home = sys_get_temp_dir().'/copland-plan-artifacts-'.uniqid();
     mkdir($home, 0755, true);
     $_SERVER['HOME'] = $home;
 
-    $store = new PlanArtifactStore();
+    $store = new PlanArtifactStore;
     $path = $store->save('Lone-Rock-Point/lrpbot', [
         'number' => 193,
         'title' => 'Fix repo toggle',
@@ -31,7 +31,7 @@ it('writes the latest plan artifact under the global copland runs directory', fu
         declineReason: null,
     ), ['command not allowed']);
 
-    expect($path)->toBe($home . '/.copland/runs/Lone-Rock-Point__lrpbot/last-plan.json');
+    expect($path)->toBe($home.'/.copland/runs/Lone-Rock-Point__lrpbot/last-plan.json');
     expect(file_exists($path))->toBeTrue();
 
     $json = json_decode((string) file_get_contents($path), true);
@@ -46,11 +46,11 @@ it('writes the latest plan artifact under the global copland runs directory', fu
 
 it('archives the previous last plan by issue number when a different issue is saved', function () {
     $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir() . '/copland-plan-artifacts-' . uniqid();
+    $home = sys_get_temp_dir().'/copland-plan-artifacts-'.uniqid();
     mkdir($home, 0755, true);
     $_SERVER['HOME'] = $home;
 
-    $store = new PlanArtifactStore();
+    $store = new PlanArtifactStore;
 
     $plan = new PlanResult(
         decision: 'plan',
@@ -72,9 +72,9 @@ it('archives the previous last plan by issue number when a different issue is sa
     $store->save('Lone-Rock-Point/lrpbot', ['number' => 193, 'title' => 'First'], $plan);
     $store->save('Lone-Rock-Point/lrpbot', ['number' => 194, 'title' => 'Second'], $plan);
 
-    $directory = $home . '/.copland/runs/Lone-Rock-Point__lrpbot';
-    $archived = $directory . '/issue-193.json';
-    $last = $directory . '/last-plan.json';
+    $directory = $home.'/.copland/runs/Lone-Rock-Point__lrpbot';
+    $archived = $directory.'/issue-193.json';
+    $last = $directory.'/last-plan.json';
 
     expect(file_exists($archived))->toBeTrue();
     expect(json_decode((string) file_get_contents($archived), true)['issue']['number'])->toBe(193);

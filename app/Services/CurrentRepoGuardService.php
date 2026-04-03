@@ -76,7 +76,7 @@ class CurrentRepoGuardService
         $normalized = preg_replace('#\.git$#', '', trim($origin));
 
         if (preg_match('#github\.com[:/](?<owner>[^/]+)/(?<repo>[^/]+)$#', $normalized, $matches) === 1) {
-            return $matches['owner'] . '/' . $matches['repo'];
+            return $matches['owner'].'/'.$matches['repo'];
         }
 
         return null;

@@ -37,6 +37,7 @@ class GitHubService
     public function ping(): bool
     {
         $this->token();
+
         return true;
     }
 
@@ -120,7 +121,7 @@ class GitHubService
     private function requestJson(string $method, string $uri, array $options = []): array
     {
         $options['headers'] = [
-            'Authorization' => 'Bearer ' . $this->token(),
+            'Authorization' => 'Bearer '.$this->token(),
             'Accept' => 'application/vnd.github+json',
             ...($options['headers'] ?? []),
         ];
