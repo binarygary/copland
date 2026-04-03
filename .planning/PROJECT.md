@@ -21,16 +21,16 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 - ✓ API retry/backoff so transient Anthropic failures retry with configurable backoff — validated in Phase 1 (2026-04-03)
 - ✓ Executor file reads capped per repo with truncation notice — validated in Phase 2 (2026-04-03)
 - ✓ Structured blocked-write protection enforced end-to-end — validated in Phase 2 (2026-04-03)
+- ✓ Structured local run log under `~/.copland/logs/runs.jsonl` — validated in Phase 3 (2026-04-03)
+- ✓ Cost-per-run summary surfaced in run output — validated in Phase 3 (2026-04-03)
 
 ### Active
 
-- [ ] Structured run log — reviewable record of decisions, tool calls, and outcomes
 - [ ] Prompt caching on executor loop — cut API costs significantly
 - [ ] Test coverage on ClaudeExecutorService and RunOrchestratorService
 - [ ] Cron setup: run multiple times per night to clear issue backlog
 - [ ] Multi-repo support: single cron entry runs all configured repos in sequence
 - [ ] README updated for Copland (currently Laravel Zero boilerplate)
-- [ ] Cost-per-run summary surfaced in run output
 
 ### Out of Scope
 
@@ -65,6 +65,7 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 | GitHub as audit log (no local DB) | No infrastructure to manage, PR/issue comments are the history | ✓ Good |
 | AnthropicApiClient owns retry behavior for all Claude services | Keeps transient-failure handling consistent across selector, planner, and executor | ✓ Phase 1 |
 | Executor write protection uses structured `blocked_write_paths` | Exact path checks are safer and more debuggable than parsing guardrail prose | ✓ Phase 2 |
+| Run logging is orchestrator-owned and persisted as append-only JSONL | Keeps normal and partial outcomes on one local review trail without coupling logs to CLI rendering | ✓ Phase 3 |
 
 ## Evolution
 
@@ -84,4 +85,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 after Phase 2 completion*
+*Last updated: 2026-04-03 after Phase 3 completion*

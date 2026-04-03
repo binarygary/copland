@@ -129,19 +129,40 @@ class RunCommand extends Command implements SignalableCommandInterface
         ?float $executorDurationSeconds,
         string $heading = 'Usage:'
     ): void {
-        $this->line($heading);
-        $this->line('  - Selector: '.AnthropicCostEstimator::format($selectorUsage));
-        $this->line('  - Planner: '.AnthropicCostEstimator::format($plannerUsage));
-        $this->line('  - Executor: '.AnthropicCostEstimator::format($executorUsage));
-        $total = AnthropicCostEstimator::combine(
+        foreach (self::usageSummaryLines(
             $selectorUsage,
             $plannerUsage,
             $executorUsage,
-        );
-        $this->line('  - Total: '.AnthropicCostEstimator::format($total));
-        if ($executorDurationSeconds !== null) {
-            $this->line('  - Executor elapsed: '.(int) round($executorDurationSeconds).'s');
+            $executorDurationSeconds,
+            $heading,
+        ) as $line) {
+            $this->line($line);
         }
-        $this->line('');
+    }
+
+    public static function usageSummaryLines(
+        mixed $selectorUsage,
+        mixed $plannerUsage,
+        mixed $executorUsage,
+        ?float $executorDurationSeconds,
+        string $heading = 'Usage:'
+    ): array {
+        $lines = [$heading];
+        $lines[] = '  - Selector: '.AnthropicCostEstimator::format($selectorUsage);
+        $lines[] = '  - Planner: '.AnthropicCostEstimator::format($plannerUsage);
+        $lines[] = '  - Executor: '.AnthropicCostEstimator::format($executorUsage);
+        $lines[] = '  - Total: '.AnthropicCostEstimator::format(AnthropicCostEstimator::combine(
+            $selectorUsage,
+            $plannerUsage,
+            $executorUsage,
+        ));
+
+        if ($executorDurationSeconds !== null) {
+            $lines[] = '  - Executor elapsed: '.(int) round($executorDurationSeconds).'s';
+        }
+
+        $lines[] = '';
+
+        return $lines;
     }
 }

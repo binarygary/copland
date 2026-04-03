@@ -13,8 +13,8 @@
 
 ### Observability
 
-- [ ] **OBS-01**: Each run appends a structured entry to `~/.copland/logs/runs.jsonl` containing repo, issue, status, decision path, and timestamps — readable the next morning without checking GitHub
-- [ ] **OBS-02**: CLI run output includes a cost summary line showing selector, planner, and executor token usage and estimated USD cost
+- [x] **OBS-01**: Each run appends a structured entry to `~/.copland/logs/runs.jsonl` containing repo, issue, status, decision path, and timestamps — readable the next morning without checking GitHub
+- [x] **OBS-02**: CLI run output includes a cost summary line showing selector, planner, and executor token usage and estimated USD cost
 
 ### Cost
 
@@ -71,8 +71,8 @@
 | RELY-01 | Phase 1 | Complete (2026-04-03) |
 | RELY-02 | Phase 2 | Complete (2026-04-03) |
 | RELY-03 | Phase 2 | Complete (2026-04-03) |
-| OBS-01 | Phase 3 | Pending |
-| OBS-02 | Phase 3 | Pending |
+| OBS-01 | Phase 3 | Complete (2026-04-03) |
+| OBS-02 | Phase 3 | Complete (2026-04-03) |
 | COST-01 | Phase 4 | Pending |
 | COST-02 | Phase 5 | Pending |
 | SCHED-01 | Phase 6 | Pending |
@@ -91,4 +91,4 @@
 
 ---
 *Requirements defined: 2026-04-02*
-*Last updated: 2026-04-03 after Phase 2 verification and completion*
+*Last updated: 2026-04-03 after Phase 3 verification and completion*

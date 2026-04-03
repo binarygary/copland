@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: API Retry/Backoff** - Introduce AnthropicApiClient wrapper so transient 429/5xx errors no longer kill overnight runs
 - [x] **Phase 2: Executor Hardening** - Cap file reads and enforce structured write protection so context stays bounded and guardrails are reliable
-- [ ] **Phase 3: Structured Run Log** - Persist a JSON Lines run log and surface cost in CLI output so every morning is reviewable
+- [x] **Phase 3: Structured Run Log** - Persist a JSON Lines run log and surface cost in CLI output so every morning is reviewable
 - [ ] **Phase 4: Prompt Caching** - Add cache_control to executor system prompt so rounds 2-12 pay ~10% of normal system-prompt input cost
 - [ ] **Phase 5: Cache-Aware Cost Model** - Update ModelUsage and AnthropicCostEstimator to track cache-write/read tokens at correct rates
 - [ ] **Phase 6: Multi-Repo Runner** - Add repos: list to global config and make copland run iterate all repos sequentially
@@ -155,7 +155,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. API Retry/Backoff | 4/4 | Complete | 2026-04-03 |
 | 2. Executor Hardening | 4/4 | Complete | 2026-04-03 |
-| 3. Structured Run Log | 0/4 | Planned | - |
+| 3. Structured Run Log | 4/4 | Complete | 2026-04-03 |
 | 4. Prompt Caching | 0/TBD | Not started | - |
 | 5. Cache-Aware Cost Model | 0/TBD | Not started | - |
 | 6. Multi-Repo Runner | 0/TBD | Not started | - |

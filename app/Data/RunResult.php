@@ -12,6 +12,8 @@ class RunResult
         public readonly ?int $selectedIssueNumber,
         public readonly ?string $failureReason,
         public readonly array $log,
+        public readonly string $startedAt,
+        public readonly string $finishedAt,
         public readonly ?ModelUsage $selectorUsage = null,
         public readonly ?ModelUsage $plannerUsage = null,
         public readonly ?ModelUsage $executorUsage = null,

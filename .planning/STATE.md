@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_execute
-stopped_at: Phase 3 planned
-last_updated: "2026-04-03T18:26:00Z"
-last_activity: 2026-04-03 -- Phase 3 planning completed
+status: ready_for_context
+stopped_at: Phase 3 complete
+last_updated: "2026-04-03T18:25:24Z"
+last_activity: 2026-04-03 -- Phase 3 completed and verified
 progress:
   total_phases: 11
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 12
-  completed_plans: 8
-  percent: 27
+  completed_plans: 12
+  percent: 36
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-03)
 
 **Core value:** A reliable overnight agent that opens merge-ready PRs without intervention.
-**Current focus:** Phase 3 — Structured Run Log
+**Current focus:** Phase 4 — Prompt Caching
 
 ## Current Position
 
-Phase: 3 (Structured Run Log) — READY TO EXECUTE
-Plan: 4 plans across 2 waves
-Status: Ready to execute Phase 3
-Last activity: 2026-04-03 -- Phase 3 planning completed
+Phase: 4 (Prompt Caching) — READY FOR DISCUSSION
+Plan: Context gathering
+Status: Ready to discuss Phase 4
+Last activity: 2026-04-03 -- Phase 3 completed and verified
 
-Progress: [███░░░░░░░] 27%
+Progress: [████░░░░░░] 36%
 
 ## Performance Metrics
 
@@ -46,11 +46,12 @@ Progress: [███░░░░░░░] 27%
 |-------|-------|-------|----------|
 | 1 | 4 | 44 min | 11 min |
 | 2 | 4 | 34 min | 9 min |
+| 3 | 4 | 38 min | 10 min |
 
 **Recent Trend:**
 
 - Last 5 plans: 5 completed
-- Trend: Phase 2 complete
+- Trend: Phase 3 complete
 
 *Updated after each plan completion*
 
@@ -71,6 +72,7 @@ Recent decisions affecting current work:
 - Phase 3: Run logging should be append-only JSONL under ~/.copland/logs/runs.jsonl and written from orchestrator finalization
 - Phase 3: Existing CLI cost output in RunCommand is already the baseline to preserve, not redesign
 - Phase 3: Plan decomposition is storage primitive + CLI regression lock-in first, then normal and partial orchestrator logging in wave 2
+- Phase 3: `RunLogStore` owns JSONL persistence and `RunOrchestratorService` is the single source of truth for both normal and partial run records
 
 ### Pending Todos
 
@@ -89,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-03T18:26:00Z
-Stopped at: Phase 3 planned
-Resume file: .planning/phases/03-structured-run-log/03-01-PLAN.md
+Last session: 2026-04-03T18:25:24Z
+Stopped at: Phase 3 complete
+Resume file: .planning/ROADMAP.md
