@@ -14,13 +14,19 @@ class ExecutorProgressFormatter
         );
     }
 
-    public static function response(int $round, int $toolUses, float $elapsedSeconds): string
+    public static function response(int $round, int $toolUses, float $elapsedSeconds, int $cacheWrite = 0, int $cacheRead = 0): string
     {
+        $cacheInfo = '';
+        if ($cacheWrite > 0 || $cacheRead > 0) {
+            $cacheInfo = sprintf(' [cache: +%d, %d]', $cacheWrite, $cacheRead);
+        }
+
         return sprintf(
-            '      Claude round %d: received response with %d tool call(s) after %ds',
+            '      Claude round %d: received response with %d tool call(s) after %ds%s',
             $round,
             $toolUses,
-            (int) round($elapsedSeconds)
+            (int) round($elapsedSeconds),
+            $cacheInfo
         );
     }
 

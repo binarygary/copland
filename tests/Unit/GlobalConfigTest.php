@@ -41,3 +41,75 @@ it('returns default retry config values when api.retry is not in config', functi
 
     $_SERVER['HOME'] = $originalHome;
 });
+
+it('normalizes configured repos from strings and objects', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $originalCwd = getcwd();
+    $home = sys_get_temp_dir().'/copland-global-config-repos-'.uniqid();
+    $repoPath = $home.'/repo';
+
+    mkdir($repoPath, 0755, true);
+    $_SERVER['HOME'] = $home;
+    chdir($repoPath);
+
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+claude_api_key: ""
+repos:
+  - owner/current
+  - slug: owner/other
+    path: /tmp/owner-other
+YAML
+    );
+
+    mkdir($repoPath.'/.git', 0755, true);
+    mkdir($repoPath.'/.git/refs', 0755, true);
+    file_put_contents($repoPath.'/.git/config', <<<'GIT'
+[remote "origin"]
+    url = git@github.com:owner/current.git
+GIT
+    );
+
+    $config = new GlobalConfig;
+
+    expect($config->configuredRepos())->toBe([
+        ['slug' => 'owner/current', 'path' => getcwd()],
+        ['slug' => 'owner/other', 'path' => '/tmp/owner-other'],
+    ]);
+
+    chdir($originalCwd);
+    $_SERVER['HOME'] = $originalHome;
+});
+
+it('requires an explicit path for string repos outside the current checkout', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $originalCwd = getcwd();
+    $home = sys_get_temp_dir().'/copland-global-config-repos-invalid-'.uniqid();
+    $repoPath = $home.'/repo';
+
+    mkdir($repoPath, 0755, true);
+    $_SERVER['HOME'] = $home;
+    chdir($repoPath);
+
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+claude_api_key: ""
+repos:
+  - owner/other
+YAML
+    );
+
+    mkdir($repoPath.'/.git', 0755, true);
+    mkdir($repoPath.'/.git/refs', 0755, true);
+    file_put_contents($repoPath.'/.git/config', <<<'GIT'
+[remote "origin"]
+    url = git@github.com:owner/current.git
+GIT
+    );
+
+    $config = new GlobalConfig;
+
+    expect(fn () => $config->configuredRepos())
+        ->toThrow(RuntimeException::class, "Configured repo 'owner/other' needs an explicit path");
+
+    chdir($originalCwd);
+    $_SERVER['HOME'] = $originalHome;
+});

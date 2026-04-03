@@ -4,6 +4,7 @@ namespace App\Config;
 
 use App\Support\HomeDirectory;
 use RuntimeException;
+use Symfony\Component\Process\Process;
 use Symfony\Component\Yaml\Yaml;
 
 class GlobalConfig
@@ -66,6 +67,11 @@ api:
   retry:
     max_attempts: 3
     base_delay_seconds: 1
+
+# repos:
+#   - slug: owner/repo
+#     path: /absolute/path/to/local/checkout
+#   - owner/current-repo
 YAML;
 
         if (file_put_contents($this->path, $default.PHP_EOL) === false) {
@@ -113,6 +119,50 @@ YAML;
         return $this->data['repos'] ?? [];
     }
 
+    public function configuredRepos(): array
+    {
+        $currentPath = getcwd() ?: '.';
+        $currentRepo = $this->detectRepoSlugAtPath($currentPath);
+
+        return array_map(
+            function (mixed $repo) use ($currentPath, $currentRepo): array {
+                if (is_string($repo)) {
+                    $slug = trim($repo);
+
+                    if ($slug === '') {
+                        throw new RuntimeException('Configured repo slugs cannot be empty.');
+                    }
+
+                    if ($currentRepo !== $slug) {
+                        throw new RuntimeException(
+                            "Configured repo '{$slug}' needs an explicit path when it does not match the current checkout."
+                        );
+                    }
+
+                    return ['slug' => $slug, 'path' => $currentPath];
+                }
+
+                if (is_array($repo)) {
+                    $slug = trim((string) ($repo['slug'] ?? ''));
+                    $path = trim((string) ($repo['path'] ?? $currentPath));
+
+                    if ($slug === '') {
+                        throw new RuntimeException('Configured repo objects must include a non-empty slug.');
+                    }
+
+                    if ($path === '') {
+                        throw new RuntimeException("Configured repo '{$slug}' must resolve to a non-empty path.");
+                    }
+
+                    return ['slug' => $slug, 'path' => $path];
+                }
+
+                throw new RuntimeException('Configured repos must be strings or objects with slug/path.');
+            },
+            $this->repos(),
+        );
+    }
+
     public function retryMaxAttempts(): int
     {
         return $this->data['api']['retry']['max_attempts'] ?? 3;
@@ -121,5 +171,44 @@ YAML;
     public function retryBaseDelaySeconds(): int
     {
         return $this->data['api']['retry']['base_delay_seconds'] ?? 1;
+    }
+
+    private function detectRepoSlugAtPath(string $path): ?string
+    {
+        $process = new Process(['git', '-C', $path, 'remote', 'get-url', 'origin']);
+        $process->run();
+
+        if ($process->isSuccessful()) {
+            return $this->parseRepoSlug(trim($process->getOutput()));
+        }
+
+        $configPath = rtrim($path, '/').'/.git/config';
+
+        if (! file_exists($configPath)) {
+            return null;
+        }
+
+        $config = file_get_contents($configPath);
+
+        if ($config === false || preg_match('/url\s*=\s*(.+)/', $config, $matches) !== 1) {
+            return null;
+        }
+
+        return $this->parseRepoSlug(trim($matches[1]));
+    }
+
+    private function parseRepoSlug(string $origin): ?string
+    {
+        $normalized = preg_replace('#\.git$#', '', $origin);
+
+        if ($normalized === null) {
+            return null;
+        }
+
+        if (preg_match('#github\.com[:/](?<owner>[^/]+)/(?<repo>[^/]+)$#', $normalized, $matches) !== 1) {
+            return null;
+        }
+
+        return $matches['owner'].'/'.$matches['repo'];
     }
 }

@@ -9,6 +9,8 @@ class ModelUsage
         public readonly int $inputTokens,
         public readonly int $outputTokens,
         public readonly float $estimatedCostUsd,
+        public readonly int $cacheWriteTokens = 0,
+        public readonly int $cacheReadTokens = 0,
     ) {}
 
     public function add(?self $other): self
@@ -22,6 +24,8 @@ class ModelUsage
             inputTokens: $this->inputTokens + $other->inputTokens,
             outputTokens: $this->outputTokens + $other->outputTokens,
             estimatedCostUsd: round($this->estimatedCostUsd + $other->estimatedCostUsd, 6),
+            cacheWriteTokens: $this->cacheWriteTokens + $other->cacheWriteTokens,
+            cacheReadTokens: $this->cacheReadTokens + $other->cacheReadTokens,
         );
     }
 }

@@ -14,6 +14,8 @@ use App\Support\ExecutorProgressFormatter;
 use App\Support\ExecutorRunState;
 use App\Support\FileMutationHelper;
 use App\Support\RunProgressSnapshot;
+use Anthropic\Messages\CacheControlEphemeral;
+use Anthropic\Messages\TextBlockParam;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -24,6 +26,7 @@ class ClaudeExecutorService
     public function __construct(
         private GlobalConfig $config,
         private AnthropicApiClient $apiClient,
+        private ?string $systemPrompt = null,
     ) {
         $this->model = $this->config->executorModel();
     }
@@ -46,7 +49,13 @@ class ClaudeExecutorService
 
     private function executeWithPolicy(string $workspacePath, PlanResult $plan, ExecutorPolicy $policy, ?callable $progressCallback = null, ?RunProgressSnapshot $snapshot = null): ExecutionResult
     {
-        $systemPrompt = file_get_contents(base_path('resources/prompts/executor.md'));
+        $system = [
+            TextBlockParam::with(
+                text: $this->systemPrompt(),
+                cacheControl: CacheControlEphemeral::with()
+            ),
+        ];
+
         $contractMessage = json_encode([
             'branch_name' => $plan->branchName,
             'files_to_read' => $plan->filesToRead,
@@ -67,6 +76,8 @@ class ClaudeExecutorService
         $round = 0;
         $totalInputTokens = 0;
         $totalOutputTokens = 0;
+        $totalCacheWriteTokens = 0;
+        $totalCacheReadTokens = 0;
 
         while (true) {
             $round++;
@@ -78,7 +89,7 @@ class ClaudeExecutorService
                     toolCallLog: $toolCallLog,
                     toolCallCount: count($toolCallLog),
                     durationSeconds: microtime(true) - $startTime,
-                    usage: AnthropicCostEstimator::forModel($this->model, $totalInputTokens, $totalOutputTokens),
+                    usage: AnthropicCostEstimator::forModel($this->model, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens),
                 );
             }
 
@@ -90,7 +101,7 @@ class ClaudeExecutorService
             $response = $this->apiClient->messages(
                 model: $this->model,
                 maxTokens: 4096,
-                system: $systemPrompt,
+                system: $system,
                 tools: $tools,
                 messages: $messages,
             );
@@ -98,7 +109,9 @@ class ClaudeExecutorService
             if (isset($response->usage)) {
                 $totalInputTokens += $response->usage->inputTokens;
                 $totalOutputTokens += $response->usage->outputTokens;
-                $this->updateSnapshot($snapshot, $startTime, $totalInputTokens, $totalOutputTokens);
+                $totalCacheWriteTokens += $response->usage->cacheCreationInputTokens ?? 0;
+                $totalCacheReadTokens += $response->usage->cacheReadInputTokens ?? 0;
+                $this->updateSnapshot($snapshot, $startTime, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens);
             }
 
             $toolUses = 0;
@@ -110,7 +123,13 @@ class ClaudeExecutorService
 
             $this->report(
                 $progressCallback,
-                ExecutorProgressFormatter::response($round, $toolUses, microtime(true) - $startTime)
+                ExecutorProgressFormatter::response(
+                    round: $round,
+                    toolUses: $toolUses,
+                    elapsedSeconds: microtime(true) - $startTime,
+                    cacheWrite: $response->usage->cacheCreationInputTokens ?? 0,
+                    cacheRead: $response->usage->cacheReadInputTokens ?? 0
+                )
             );
 
             $messages[] = [
@@ -132,7 +151,7 @@ class ClaudeExecutorService
                     toolCallLog: $toolCallLog,
                     toolCallCount: count($toolCallLog),
                     durationSeconds: microtime(true) - $startTime,
-                    usage: AnthropicCostEstimator::forModel($this->model, $totalInputTokens, $totalOutputTokens),
+                    usage: AnthropicCostEstimator::forModel($this->model, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens),
                 );
             }
 
@@ -200,19 +219,28 @@ class ClaudeExecutorService
                     toolCallLog: $toolCallLog,
                     toolCallCount: count($toolCallLog),
                     durationSeconds: microtime(true) - $startTime,
-                    usage: AnthropicCostEstimator::forModel($this->model, $totalInputTokens, $totalOutputTokens),
+                    usage: AnthropicCostEstimator::forModel($this->model, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens),
                 );
             }
         }
     }
 
-    private function updateSnapshot(?RunProgressSnapshot $snapshot, float $startTime, int $totalInputTokens, int $totalOutputTokens): void
+    private function systemPrompt(): string
+    {
+        if ($this->systemPrompt !== null) {
+            return $this->systemPrompt;
+        }
+
+        return (string) file_get_contents(base_path('resources/prompts/executor.md'));
+    }
+
+    private function updateSnapshot(?RunProgressSnapshot $snapshot, float $startTime, int $totalInputTokens, int $totalOutputTokens, int $cacheWrite = 0, int $cacheRead = 0): void
     {
         if ($snapshot === null) {
             return;
         }
 
-        $snapshot->executorUsage = AnthropicCostEstimator::forModel($this->model, $totalInputTokens, $totalOutputTokens);
+        $snapshot->executorUsage = AnthropicCostEstimator::forModel($this->model, $totalInputTokens, $totalOutputTokens, $cacheWrite, $cacheRead);
         $snapshot->executorDurationSeconds = microtime(true) - $startTime;
     }
 

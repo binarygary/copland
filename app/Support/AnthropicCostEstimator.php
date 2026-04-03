@@ -6,18 +6,24 @@ use App\Data\ModelUsage;
 
 class AnthropicCostEstimator
 {
-    public static function forModel(string $model, int $inputTokens, int $outputTokens): ModelUsage
+    public static function forModel(string $model, int $inputTokens, int $outputTokens, int $cacheWrite = 0, int $cacheRead = 0): ModelUsage
     {
         [$inputRate, $outputRate] = self::ratesForModel($model);
 
-        $inputCost = ($inputTokens / 1_000_000) * $inputRate;
+        // inputTokens includes cacheRead, but excludes cacheWrite
+        $uncachedInput = $inputTokens - $cacheRead;
+        $inputCost = ($uncachedInput / 1_000_000) * $inputRate;
+        $writeCost = ($cacheWrite / 1_000_000) * ($inputRate * 1.25);
+        $readCost = ($cacheRead / 1_000_000) * ($inputRate * 0.1);
         $outputCost = ($outputTokens / 1_000_000) * $outputRate;
 
         return new ModelUsage(
             model: $model,
             inputTokens: $inputTokens,
             outputTokens: $outputTokens,
-            estimatedCostUsd: round($inputCost + $outputCost, 6),
+            estimatedCostUsd: round($inputCost + $writeCost + $readCost + $outputCost, 6),
+            cacheWriteTokens: $cacheWrite,
+            cacheReadTokens: $cacheRead,
         );
     }
 
@@ -27,9 +33,19 @@ class AnthropicCostEstimator
             return 'n/a';
         }
 
+        $cacheInfo = '';
+        if ($usage->cacheWriteTokens > 0 || $usage->cacheReadTokens > 0) {
+            $cacheInfo = sprintf(
+                ' (+%s write, %s read)',
+                number_format($usage->cacheWriteTokens),
+                number_format($usage->cacheReadTokens)
+            );
+        }
+
         return sprintf(
-            '%s input, %s output, $%0.4f est.',
+            '%s input%s, %s output, $%0.4f est.',
             number_format($usage->inputTokens),
+            $cacheInfo,
             number_format($usage->outputTokens),
             $usage->estimatedCostUsd
         );

@@ -25,6 +25,8 @@ class RunOrchestratorService
         private GitService $git,
         private ClaudeExecutorService $executor,
         private VerificationService $verifier,
+        private ?PlanArtifactStore $planArtifactStore = null,
+        private ?RunLogStore $runLogStore = null,
     ) {}
 
     public function run(string $repo, array $repoProfile, ?callable $progressCallback = null, ?RunProgressSnapshot $snapshot = null): RunResult
@@ -34,7 +36,7 @@ class RunOrchestratorService
         $startedAt = date(DATE_ATOM);
         $result = null;
         $selectedIssue = null;
-        $runLogStore = new RunLogStore;
+        $runLogStore = $this->runLogStore ?? new RunLogStore;
         $caught = null;
 
         if ($snapshot !== null) {
@@ -133,7 +135,7 @@ class RunOrchestratorService
             // Step 4: Validate plan
             $this->pushLog('[4/8] Validating plan');
             $validationErrors = $this->validator->validate($plan, $repoProfile);
-            $artifactPath = (new PlanArtifactStore)->save($repo, $selectedIssue, $plan, $validationErrors);
+            $artifactPath = ($this->planArtifactStore ?? new PlanArtifactStore)->save($repo, $selectedIssue, $plan, $validationErrors);
             $this->pushLog("      Saved plan artifact to {$artifactPath}");
 
             if (! empty($validationErrors)) {
@@ -179,6 +181,32 @@ class RunOrchestratorService
             $this->pushLog($executionResult->success
                 ? "      Execution complete ({$executionResult->toolCallCount} tool calls in {$executionResult->durationSeconds}s)"
                 : "      Execution failed: {$executionResult->summary}");
+
+            if (! $executionResult->success) {
+                $this->github->commentOnIssue(
+                    $repo,
+                    $selectedIssue['number'],
+                    "❌ Agent run failed.\n\n**Reason:** {$executionResult->summary}"
+                );
+
+                $result = new RunResult(
+                    status: 'failed',
+                    prUrl: null,
+                    prNumber: null,
+                    selectedIssueTitle: $selectedIssue['title'],
+                    selectedIssueNumber: $selectedIssue['number'],
+                    failureReason: $executionResult->summary,
+                    log: $this->log,
+                    startedAt: $startedAt,
+                    finishedAt: date(DATE_ATOM),
+                    selectorUsage: $selection->usage,
+                    plannerUsage: $plan->usage,
+                    executorUsage: $executionResult->usage,
+                    executorDurationSeconds: $executionResult->durationSeconds,
+                );
+
+                return $result;
+            }
 
             // Step 7: Verify
             $this->pushLog('[7/8] Running verification');

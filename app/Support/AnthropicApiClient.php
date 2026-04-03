@@ -2,17 +2,20 @@
 
 namespace App\Support;
 
-use Anthropic\Client;
+use Closure;
 use RuntimeException;
 use Throwable;
 
 class AnthropicApiClient
 {
     public function __construct(
-        private Client $client,
+        private object $client,
         private int $maxAttempts = 3,
         private int $baseDelaySeconds = 1,
-    ) {}
+        private ?Closure $delay = null,
+    ) {
+        $this->delay ??= static fn (int $seconds): int => sleep($seconds);
+    }
 
     public function messages(
         string $model,
@@ -34,7 +37,7 @@ class AnthropicApiClient
                     'messages' => $messages,
                 ];
 
-                if ($system !== '') {
+                if ($system !== '' && $system !== []) {
                     $params['system'] = $system;
                 }
 
@@ -57,7 +60,7 @@ class AnthropicApiClient
                 $lastException = $e;
 
                 if ($attempt < $this->maxAttempts) {
-                    sleep($this->backoffDelay($attempt));
+                    ($this->delay)($this->backoffDelay($attempt));
                 }
             }
         }

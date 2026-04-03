@@ -88,6 +88,8 @@ class ClaudeSelectorService
             $this->model,
             $response->usage->inputTokens,
             $response->usage->outputTokens,
+            $response->usage->cacheCreationInputTokens ?? 0,
+            $response->usage->cacheReadInputTokens ?? 0,
         );
     }
 }
