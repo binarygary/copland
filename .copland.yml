@@ -1,0 +1,26 @@
+base_branch: main
+max_executor_rounds: 12
+
+issue_labels:
+  required: [agent-ready]
+  blocked: [agent-skip, blocked]
+
+allowed_commands:
+  - php artisan
+  - composer
+  - npm
+  - pest
+
+blocked_paths:
+  - database/migrations
+
+risky_keywords:
+  - migration
+  - auth
+  - billing
+  - deploy
+  - infrastructure
+
+repo_summary: "Sample repo for testing Copland."
+
+conventions: "Follow PSR-12. Prefer small focused classes."
