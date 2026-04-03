@@ -15,8 +15,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: API Retry/Backoff** - Introduce AnthropicApiClient wrapper so transient 429/5xx errors no longer kill overnight runs
 - [x] **Phase 2: Executor Hardening** - Cap file reads and enforce structured write protection so context stays bounded and guardrails are reliable
 - [x] **Phase 3: Structured Run Log** - Persist a JSON Lines run log and surface cost in CLI output so every morning is reviewable
-- [ ] **Phase 4: Prompt Caching** - Add cache_control to executor system prompt so rounds 2-12 pay ~10% of normal system-prompt input cost
-- [ ] **Phase 5: Cache-Aware Cost Model** - Update ModelUsage and AnthropicCostEstimator to track cache-write/read tokens at correct rates
+- [x] **Phase 4: Prompt Caching** - Add cache_control to executor system prompt so rounds 2-12 pay ~10% of normal system-prompt input cost
+- [x] **Phase 5: Cache-Aware Cost Model** - Update ModelUsage and AnthropicCostEstimator to track cache-write/read tokens at correct rates
 - [ ] **Phase 6: Multi-Repo Runner** - Add repos: list to global config and make copland run iterate all repos sequentially
 - [ ] **Phase 7: Launchd Setup** - Add copland setup command that installs a macOS launchd plist for nightly automation
 - [ ] **Phase 8: Retry Wrapper Tests** - Pest tests for AnthropicApiClient covering retry logic, backoff, and non-retryable errors
@@ -69,7 +69,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Placing the cache marker on the system prompt (not on messages) means the cache is not invalidated as conversation history grows
 **Plans**: 1
 **Plan list**:
-- [ ] 04-01-PLAN.md — Implement prompt caching for the executor system prompt
+- [x] 04-01-PLAN.md — Implement prompt caching for the executor system prompt
 
 ### Phase 5: Cache-Aware Cost Model
 **Goal**: Reported per-run costs accurately reflect cache-write and cache-read token rates, not a flat input token rate
@@ -79,7 +79,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. ModelUsage tracks cacheWriteTokens (billed at 1.25x) and cacheReadTokens (billed at 0.1x) as separate fields
   2. AnthropicCostEstimator produces a lower estimated cost on a cached run than on the same run without caching
   3. The cost summary in CLI output reflects the three-way split (uncached input, cache write, cache read) rather than a single input token line
-**Plans**: TBD
+**Plans**: 2
+**Plan list**:
+- [x] 05-01-PLAN.md — Update ModelUsage and AnthropicCostEstimator (Foundation)
+- [x] 05-02-PLAN.md — Integrate cache token tracking into Selector, Planner, and Executor (Integration)
 
 ### Phase 6: Multi-Repo Runner
 **Goal**: A single copland run invocation processes all configured repos sequentially, with one repo failure not stopping the others
@@ -90,7 +93,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. copland run with no argument iterates every repo in the list and attempts a run for each
   3. If one repo fails (API error, no issues, etc.), the runner logs the failure and continues to the next repo
   4. The run log contains separate entries for each repo, identifiable by the repo field
-**Plans**: TBD
+**Plans**: 2
+**Plan list**:
+- [ ] 06-01-PLAN.md — GlobalConfig Updates and RunCommand Refactoring
+- [ ] 06-02-PLAN.md — Multi-Repo Iteration and Execution
 
 ### Phase 7: Launchd Setup
 **Goal**: copland setup installs a working macOS launchd plist so nightly automation requires no manual cron configuration
@@ -158,9 +164,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. API Retry/Backoff | 4/4 | Complete | 2026-04-03 |
 | 2. Executor Hardening | 4/4 | Complete | 2026-04-03 |
 | 3. Structured Run Log | 4/4 | Complete | 2026-04-03 |
-| 4. Prompt Caching | 0/1 | Planned | - |
-| 5. Cache-Aware Cost Model | 0/TBD | Not started | - |
-| 6. Multi-Repo Runner | 0/TBD | Not started | - |
+| 4. Prompt Caching | 1/1 | Complete | 2026-04-03 |
+| 5. Cache-Aware Cost Model | 2/2 | Complete | 2026-04-03 |
+| 6. Multi-Repo Runner | 0/2 | Planned | - |
 | 7. Launchd Setup | 0/TBD | Not started | - |
 | 8. Retry Wrapper Tests | 0/TBD | Not started | - |
 | 9. Executor Tests | 0/TBD | Not started | - |
