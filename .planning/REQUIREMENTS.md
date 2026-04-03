@@ -1,0 +1,96 @@
+# Requirements: Copland
+
+**Defined:** 2026-04-02
+**Core Value:** A reliable overnight agent that opens merge-ready PRs without intervention.
+
+## v1 Requirements
+
+### Reliability
+
+- [ ] **RELY-01**: System recovers from transient Anthropic API errors (429/5xx) with exponential backoff, up to 3 retries, before failing a run
+- [ ] **RELY-02**: File reads in the executor are capped at a configurable line limit (default 300) with a truncation notice appended so Claude knows content was cut
+- [ ] **RELY-03**: Write protection is enforced via a structured `blocked_write_paths` list, not free-text guardrail parsing
+
+### Observability
+
+- [ ] **OBS-01**: Each run appends a structured entry to `~/.copland/logs/runs.jsonl` containing repo, issue, status, decision path, and timestamps — readable the next morning without checking GitHub
+- [ ] **OBS-02**: CLI run output includes a cost summary line showing selector, planner, and executor token usage and estimated USD cost
+
+### Cost
+
+- [ ] **COST-01**: Executor system prompt uses `cache_control: {type: ephemeral}` so rounds 2-12 pay ~10% of normal system-prompt input cost
+- [ ] **COST-02**: `ModelUsage` and `AnthropicCostEstimator` track cache-write tokens (1.25x rate) and cache-read tokens (0.1x rate) separately for accurate post-caching cost reporting
+
+### Scheduling
+
+- [ ] **SCHED-01**: A `repos:` list in `~/.copland.yml` allows multiple repos to be run sequentially in one invocation
+- [ ] **SCHED-02**: `copland run` without a repo argument runs all repos in the `repos:` list sequentially, failing-and-continuing per repo
+- [ ] **SCHED-03**: `copland setup` installs a macOS launchd plist that runs Copland nightly, with `HOME` set explicitly so `GlobalConfig` resolves correctly
+
+### Testing
+
+- [ ] **TEST-01**: `ClaudeExecutorService` has Pest tests covering tool dispatch, thrashing abort conditions, and policy violation handling
+- [ ] **TEST-02**: `RunOrchestratorService` has Pest tests covering the full 8-step flow, all early-exit paths, and worktree cleanup in `finally`
+- [ ] **TEST-03**: `AnthropicApiClient` retry wrapper has Pest tests covering retry on 429/5xx, no-retry on 4xx, and backoff timing
+
+### Documentation
+
+- [ ] **DOCS-01**: README.md rewritten for Copland — installation, configuration, `agent-ready` label workflow, and command reference
+- [ ] **DOCS-02**: Overnight setup guide documenting how to configure repos, label issues, and run `copland setup` for nightly automation
+
+## v2 Requirements
+
+### Cost
+
+- **COST-03**: Executor loop enforces a per-run token budget cap, aborting cleanly if cost exceeds configured threshold (depends on COST-02 for accurate real-time tracking)
+
+### Reliability
+
+- **RELY-04**: Cache savings column in cost summary showing actual vs. estimated uncached cost (requires COST-01 + COST-02 proven in production first)
+
+### Observability
+
+- **OBS-03**: `copland status` command reads `runs.jsonl` and displays last run per repo in a summary table (depends on OBS-01)
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Web dashboard or UI | Personal CLI tool — terminal output is sufficient |
+| Parallel repo execution | Sequential is correct; parallel adds complexity with no benefit for overnight use |
+| Run resumption / checkpointing | Stateless runs are simpler to reason about; retry-from-scratch is acceptable |
+| Slack/email notifications | Checking the log or GitHub in the morning is sufficient |
+| Multi-user / team features | Personal tool — not designed for shared use |
+| PR auto-merge | Draft PRs only — human review required before merge |
+| Hosted / cloud deployment | Cron/launchd on local machine is the target model |
+
+## Traceability
+
+Populated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| RELY-01 | — | Pending |
+| RELY-02 | — | Pending |
+| RELY-03 | — | Pending |
+| OBS-01 | — | Pending |
+| OBS-02 | — | Pending |
+| COST-01 | — | Pending |
+| COST-02 | — | Pending |
+| SCHED-01 | — | Pending |
+| SCHED-02 | — | Pending |
+| SCHED-03 | — | Pending |
+| TEST-01 | — | Pending |
+| TEST-02 | — | Pending |
+| TEST-03 | — | Pending |
+| DOCS-01 | — | Pending |
+| DOCS-02 | — | Pending |
+
+**Coverage:**
+- v1 requirements: 15 total
+- Mapped to phases: 0 (pending roadmap)
+- Unmapped: 15 ⚠️
+
+---
+*Requirements defined: 2026-04-02*
+*Last updated: 2026-04-02 after initial definition*
