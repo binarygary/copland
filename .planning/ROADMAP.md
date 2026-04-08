@@ -70,7 +70,13 @@ Plans:
   3. When a GitHub PR is opened for an Asana-sourced task, Copland posts a comment to the Asana task containing the PR URL
   4. Asana task GIDs are handled as strings throughout the pipeline without type errors or silent truncation
   5. When no Asana tasks are available (empty project or all filtered out), Copland exits cleanly with an informative message rather than erroring
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 17-01-PLAN.md — Rename selectedIssueNumber → selectedTaskId, widen type to string|int|null, fix RunCommand TaskSource wiring
+- [ ] 17-02-PLAN.md — Add Asana config getters to GlobalConfig and taskSource() to RepoConfig
+- [ ] 17-03-PLAN.md — Create AsanaService (Guzzle HTTP client, fetch/filter/comment/tag removal)
+- [ ] 17-04-PLAN.md — Create AsanaTaskSource, wire conditional TaskSource into RunCommand
+- [ ] 17-05-PLAN.md — Unit tests for AsanaService, AsanaTaskSource, GlobalConfig/RepoConfig Asana getters
 
 ### Progress Table
 
@@ -79,7 +85,7 @@ Plans:
 | 14. LlmClient Contracts | 1/1 | Complete   | 2026-04-08 |
 | 15. Provider Implementations | 0/3 | Complete    | 2026-04-08 |
 | 16. TaskSource Extraction | 3/3 | Complete    | 2026-04-08 |
-| 17. Asana Integration | 0/? | Not started | - |
+| 17. Asana Integration | 0/5 | Not started | - |
 
 ---
 
