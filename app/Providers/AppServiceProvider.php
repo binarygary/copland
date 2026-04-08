@@ -3,9 +3,12 @@
 namespace App\Providers;
 
 use App\Config\GlobalConfig;
+use App\Contracts\TaskSource;
 use App\Services\ClaudeExecutorService;
 use App\Services\ClaudePlannerService;
 use App\Services\ClaudeSelectorService;
+use App\Services\GitHubService;
+use App\Services\GitHubTaskSource;
 use App\Support\LlmClientFactory;
 use Illuminate\Support\ServiceProvider;
 
@@ -44,6 +47,10 @@ class AppServiceProvider extends ServiceProvider
             $client = LlmClientFactory::forStage('executor', $app->make(GlobalConfig::class));
 
             return new ClaudeExecutorService($app->make(GlobalConfig::class), $client);
+        });
+
+        $this->app->bind(TaskSource::class, function ($app) {
+            return new GitHubTaskSource($app->make(GitHubService::class));
         });
     }
 }

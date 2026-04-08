@@ -7,10 +7,10 @@ use App\Data\PrefilterResult;
 use App\Data\RunResult;
 use App\Data\SelectionResult;
 use App\Data\VerificationResult;
+use App\Contracts\TaskSource;
 use App\Services\ClaudeExecutorService;
 use App\Services\ClaudePlannerService;
 use App\Services\ClaudeSelectorService;
-use App\Services\GitHubService;
 use App\Services\GitService;
 use App\Services\IssuePrefilterService;
 use App\Services\PlanValidatorService;
@@ -33,12 +33,12 @@ it('completes the happy path and opens a draft PR', function () {
     $execution = executionResult(success: true, summary: 'Implemented successfully');
     $verification = new VerificationResult(true, []);
 
-    $github = \Mockery::mock(GitHubService::class);
-    $github->shouldReceive('getIssues')->once()->andReturn([$issue]);
-    $github->shouldReceive('createDraftPr')->once()->with('acme/repo', 'feature/test-branch', 'Test PR', 'PR body')
+    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
+    $taskSource->shouldReceive('openDraftPr')->once()->with('acme/repo', 'feature/test-branch', 'Test PR', 'PR body')
         ->andReturn(['html_url' => 'https://example.test/pr/1', 'number' => 1]);
-    $github->shouldReceive('removeLabel')->once()->with('acme/repo', 42, 'agent-ready');
-    $github->shouldReceive('commentOnIssue')->once()->with('acme/repo', 42, \Mockery::type('string'));
+    $taskSource->shouldReceive('removeTag')->once()->with('acme/repo', 42, 'agent-ready');
+    $taskSource->shouldReceive('addComment')->once()->with('acme/repo', 42, \Mockery::type('string'));
 
     $prefilter = \Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
@@ -67,7 +67,7 @@ it('completes the happy path and opens a draft PR', function () {
     $verifier->shouldReceive('verify')->once()->andReturn($verification);
 
     $service = makeOrchestrator(
-        github: $github,
+        taskSource: $taskSource,
         prefilter: $prefilter,
         selector: $selector,
         planner: $planner,
@@ -96,8 +96,8 @@ it('returns skipped when the selector skips all issues', function () {
     $stores = makeStores();
     $issue = makeIssue();
 
-    $github = \Mockery::mock(GitHubService::class);
-    $github->shouldReceive('getIssues')->once()->andReturn([$issue]);
+    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
 
     $prefilter = \Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
@@ -106,7 +106,7 @@ it('returns skipped when the selector skips all issues', function () {
     $selector->shouldReceive('selectTask')->once()->andReturn(new SelectionResult('skip_all', null, 'nothing safe', [], usage('selector')));
 
     $service = makeOrchestrator(
-        github: $github,
+        taskSource: $taskSource,
         prefilter: $prefilter,
         selector: $selector,
         planArtifactStore: $stores['plan'],
@@ -125,8 +125,8 @@ it('returns skipped when the planner declines the selected issue', function () {
     $stores = makeStores();
     $issue = makeIssue();
 
-    $github = \Mockery::mock(GitHubService::class);
-    $github->shouldReceive('getIssues')->once()->andReturn([$issue]);
+    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
 
     $prefilter = \Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
@@ -138,7 +138,7 @@ it('returns skipped when the planner declines the selected issue', function () {
     $planner->shouldReceive('planTask')->once()->andReturn(makePlan(decision: 'decline', declineReason: 'too risky', usage: usage('planner')));
 
     $service = makeOrchestrator(
-        github: $github,
+        taskSource: $taskSource,
         prefilter: $prefilter,
         selector: $selector,
         planner: $planner,
@@ -159,8 +159,8 @@ it('returns failed when validation fails after saving the plan artifact', functi
     $issue = makeIssue();
     $plan = makePlan(usage: usage('planner'));
 
-    $github = \Mockery::mock(GitHubService::class);
-    $github->shouldReceive('getIssues')->once()->andReturn([$issue]);
+    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
 
     $prefilter = \Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
@@ -175,7 +175,7 @@ it('returns failed when validation fails after saving the plan artifact', functi
     $validator->shouldReceive('validate')->once()->andReturn(['blocked path']);
 
     $service = makeOrchestrator(
-        github: $github,
+        taskSource: $taskSource,
         prefilter: $prefilter,
         selector: $selector,
         planner: $planner,
@@ -198,9 +198,9 @@ it('returns failed immediately when the executor reports failure', function () {
     $plan = makePlan(usage: usage('planner'));
     $execution = executionResult(success: false, summary: 'executor blew up');
 
-    $github = \Mockery::mock(GitHubService::class);
-    $github->shouldReceive('getIssues')->once()->andReturn([$issue]);
-    $github->shouldReceive('commentOnIssue')->once()->with('acme/repo', 42, \Mockery::on(fn (string $body) => str_contains($body, 'executor blew up')));
+    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
+    $taskSource->shouldReceive('addComment')->once()->with('acme/repo', 42, \Mockery::on(fn (string $body) => str_contains($body, 'executor blew up')));
 
     $prefilter = \Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
@@ -229,7 +229,7 @@ it('returns failed immediately when the executor reports failure', function () {
     $git->shouldNotReceive('push');
 
     $service = makeOrchestrator(
-        github: $github,
+        taskSource: $taskSource,
         prefilter: $prefilter,
         selector: $selector,
         planner: $planner,
@@ -255,9 +255,9 @@ it('returns failed when verification fails after execution', function () {
     $plan = makePlan(usage: usage('planner'));
     $execution = executionResult(success: true, summary: 'implemented');
 
-    $github = \Mockery::mock(GitHubService::class);
-    $github->shouldReceive('getIssues')->once()->andReturn([$issue]);
-    $github->shouldReceive('commentOnIssue')->once()->with('acme/repo', 42, \Mockery::on(fn (string $body) => str_contains($body, 'verification failed')));
+    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
+    $taskSource->shouldReceive('addComment')->once()->with('acme/repo', 42, \Mockery::on(fn (string $body) => str_contains($body, 'verification failed')));
 
     $prefilter = \Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
@@ -282,7 +282,7 @@ it('returns failed when verification fails after execution', function () {
     $verifier->shouldReceive('verify')->once()->andReturn(new VerificationResult(false, ['verification failed']));
 
     $service = makeOrchestrator(
-        github: $github,
+        taskSource: $taskSource,
         prefilter: $prefilter,
         selector: $selector,
         planner: $planner,
@@ -307,8 +307,8 @@ it('cleans up the workspace and writes a partial run log when the executor throw
     $plan = makePlan(usage: usage('planner'));
     $snapshot = new RunProgressSnapshot;
 
-    $github = \Mockery::mock(GitHubService::class);
-    $github->shouldReceive('getIssues')->once()->andReturn([$issue]);
+    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
 
     $prefilter = \Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
@@ -330,7 +330,7 @@ it('cleans up the workspace and writes a partial run log when the executor throw
     $executor->shouldReceive('executeWithRepoProfile')->once()->andThrow(new \RuntimeException('kaboom'));
 
     $service = makeOrchestrator(
-        github: $github,
+        taskSource: $taskSource,
         prefilter: $prefilter,
         selector: $selector,
         planner: $planner,
@@ -351,7 +351,7 @@ it('cleans up the workspace and writes a partial run log when the executor throw
 });
 
 function makeOrchestrator(
-    ?GitHubService $github = null,
+    ?TaskSource $taskSource = null,
     ?IssuePrefilterService $prefilter = null,
     ?ClaudeSelectorService $selector = null,
     ?ClaudePlannerService $planner = null,
@@ -364,7 +364,7 @@ function makeOrchestrator(
     ?RunLogStore $runLogStore = null,
 ): RunOrchestratorService {
     return new RunOrchestratorService(
-        $github ?? \Mockery::mock(GitHubService::class),
+        $taskSource ?? \Mockery::mock(TaskSource::class),
         $prefilter ?? \Mockery::mock(IssuePrefilterService::class),
         $selector ?? \Mockery::mock(ClaudeSelectorService::class),
         $planner ?? \Mockery::mock(ClaudePlannerService::class),
