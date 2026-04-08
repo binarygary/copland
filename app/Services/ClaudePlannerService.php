@@ -3,9 +3,10 @@
 namespace App\Services;
 
 use App\Config\GlobalConfig;
+use App\Contracts\LlmClient;
+use App\Data\LlmResponse;
 use App\Data\ModelUsage;
 use App\Data\PlanResult;
-use App\Support\AnthropicApiClient;
 use App\Support\AnthropicCostEstimator;
 use App\Support\IssueFileHintExtractor;
 use App\Support\PlanFieldNormalizer;
@@ -17,7 +18,7 @@ class ClaudePlannerService
 
     public function __construct(
         private GlobalConfig $config,
-        private AnthropicApiClient $apiClient,
+        private LlmClient $apiClient,
     ) {
         $this->model = $this->config->plannerModel();
     }
@@ -47,7 +48,7 @@ class ClaudePlannerService
             $promptTemplate
         );
 
-        $response = $this->apiClient->messages(
+        $response = $this->apiClient->complete(
             model: $this->model,
             maxTokens: 2048,
             messages: [
@@ -55,7 +56,7 @@ class ClaudePlannerService
             ],
         );
 
-        $text = $response->content[0]->text ?? '';
+        $text = $response->content[0]['text'] ?? '';
         $json = $this->extractJson($text);
 
         if (! isset($json['decision'])) {
@@ -98,18 +99,14 @@ class ClaudePlannerService
         return $data;
     }
 
-    private function usageFromResponse(object $response): ?ModelUsage
+    private function usageFromResponse(LlmResponse $response): ?ModelUsage
     {
-        if (! isset($response->usage)) {
-            return null;
-        }
-
         return AnthropicCostEstimator::forModel(
             $this->model,
             $response->usage->inputTokens,
             $response->usage->outputTokens,
-            $response->usage->cacheCreationInputTokens ?? 0,
-            $response->usage->cacheReadInputTokens ?? 0,
+            $response->usage->cacheWriteTokens,
+            $response->usage->cacheReadTokens,
         );
     }
 }

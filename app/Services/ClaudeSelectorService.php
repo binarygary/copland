@@ -3,9 +3,10 @@
 namespace App\Services;
 
 use App\Config\GlobalConfig;
+use App\Contracts\LlmClient;
+use App\Data\LlmResponse;
 use App\Data\ModelUsage;
 use App\Data\SelectionResult;
-use App\Support\AnthropicApiClient;
 use App\Support\AnthropicCostEstimator;
 use RuntimeException;
 
@@ -15,7 +16,7 @@ class ClaudeSelectorService
 
     public function __construct(
         private GlobalConfig $config,
-        private AnthropicApiClient $apiClient,
+        private LlmClient $apiClient,
     ) {
         $this->model = $this->config->selectorModel();
     }
@@ -37,7 +38,7 @@ class ClaudeSelectorService
             $promptTemplate
         );
 
-        $response = $this->apiClient->messages(
+        $response = $this->apiClient->complete(
             model: $this->model,
             maxTokens: 1024,
             messages: [
@@ -45,7 +46,7 @@ class ClaudeSelectorService
             ],
         );
 
-        $text = $response->content[0]->text ?? '';
+        $text = $response->content[0]['text'] ?? '';
         $json = $this->extractJson($text);
 
         if (! isset($json['decision'])) {
@@ -78,18 +79,14 @@ class ClaudeSelectorService
         return $data;
     }
 
-    private function usageFromResponse(object $response): ?ModelUsage
+    private function usageFromResponse(LlmResponse $response): ?ModelUsage
     {
-        if (! isset($response->usage)) {
-            return null;
-        }
-
         return AnthropicCostEstimator::forModel(
             $this->model,
             $response->usage->inputTokens,
             $response->usage->outputTokens,
-            $response->usage->cacheCreationInputTokens ?? 0,
-            $response->usage->cacheReadInputTokens ?? 0,
+            $response->usage->cacheWriteTokens,
+            $response->usage->cacheReadTokens,
         );
     }
 }
