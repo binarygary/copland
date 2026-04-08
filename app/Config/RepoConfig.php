@@ -104,4 +104,9 @@ YAML;
     {
         return $this->data['conventions'] ?? '';
     }
+
+    public function llmConfig(): array
+    {
+        return $this->data['llm'] ?? [];
+    }
 }

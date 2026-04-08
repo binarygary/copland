@@ -7,6 +7,7 @@ use Anthropic\Messages\TextBlockParam;
 use App\Contracts\LlmClient;
 use App\Data\LlmResponse;
 use App\Data\LlmUsage;
+use App\Support\LlmResponseNormalizer;
 use Closure;
 use RuntimeException;
 use Throwable;
@@ -76,7 +77,7 @@ class AnthropicApiClient implements LlmClient
 
         return new LlmResponse(
             content: $content,
-            stopReason: $sdkResponse->stopReason,
+            stopReason: LlmResponseNormalizer::normalize($sdkResponse->stopReason),
             usage: $usage,
         );
     }

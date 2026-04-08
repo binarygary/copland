@@ -132,7 +132,7 @@ class ClaudeExecutorService
                 'content' => $response->content,
             ];
 
-            if ($response->stopReason === 'end_turn') {
+            if ($response->stopReason === 'stop') {
                 $finalText = '';
                 foreach ($response->content as $block) {
                     if ($block['type'] === 'text') {
