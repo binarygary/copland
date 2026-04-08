@@ -78,7 +78,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 14. LlmClient Contracts | 1/1 | Complete   | 2026-04-08 |
 | 15. Provider Implementations | 0/3 | Complete    | 2026-04-08 |
-| 16. TaskSource Extraction | 3/3 | Complete   | 2026-04-08 |
+| 16. TaskSource Extraction | 3/3 | Complete    | 2026-04-08 |
 | 17. Asana Integration | 0/? | Not started | - |
 
 ---
