@@ -2,11 +2,16 @@
 
 namespace App\Support;
 
+use Anthropic\Messages\CacheControlEphemeral;
+use Anthropic\Messages\TextBlockParam;
+use App\Contracts\LlmClient;
+use App\Data\LlmResponse;
+use App\Data\LlmUsage;
 use Closure;
 use RuntimeException;
 use Throwable;
 
-class AnthropicApiClient
+class AnthropicApiClient implements LlmClient
 {
     public function __construct(
         private object $client,
@@ -15,6 +20,65 @@ class AnthropicApiClient
         private ?Closure $delay = null,
     ) {
         $this->delay ??= static fn (int $seconds): int => sleep($seconds);
+    }
+
+    public function complete(
+        string $model,
+        int $maxTokens,
+        array $messages,
+        array $tools = [],
+        array $systemBlocks = [],
+    ): LlmResponse {
+        $system = [];
+        foreach ($systemBlocks as $block) {
+            if ($block->cache) {
+                $system[] = TextBlockParam::with(
+                    text: $block->text,
+                    cacheControl: CacheControlEphemeral::with()
+                );
+            } else {
+                $system[] = TextBlockParam::with(text: $block->text);
+            }
+        }
+
+        $sdkResponse = $this->messages(
+            model: $model,
+            maxTokens: $maxTokens,
+            system: $system !== [] ? $system : '',
+            tools: $tools,
+            messages: $messages,
+        );
+
+        $content = [];
+        foreach ($sdkResponse->content as $block) {
+            $entry = ['type' => $block->type];
+            if (isset($block->text)) {
+                $entry['text'] = $block->text;
+            }
+            if (isset($block->name)) {
+                $entry['name'] = $block->name;
+            }
+            if (isset($block->id)) {
+                $entry['id'] = $block->id;
+            }
+            if (isset($block->input)) {
+                $entry['input'] = (array) $block->input;
+            }
+            $content[] = $entry;
+        }
+
+        $usage = new LlmUsage(
+            inputTokens: $sdkResponse->usage->inputTokens ?? 0,
+            outputTokens: $sdkResponse->usage->outputTokens ?? 0,
+            cacheWriteTokens: $sdkResponse->usage->cacheCreationInputTokens ?? 0,
+            cacheReadTokens: $sdkResponse->usage->cacheReadInputTokens ?? 0,
+        );
+
+        return new LlmResponse(
+            content: $content,
+            stopReason: $sdkResponse->stopReason,
+            usage: $usage,
+        );
     }
 
     public function messages(
