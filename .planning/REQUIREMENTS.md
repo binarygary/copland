@@ -10,8 +10,8 @@
 
 ### LLM Provider Abstraction (PROV)
 
-- [ ] **PROV-01**: Copland has a `LlmClient` interface with normalized `LlmResponse` and `LlmUsage` value objects
-- [ ] **PROV-02**: `AnthropicApiClient` implements `LlmClient` — existing behavior and prompt caching unchanged
+- [x] **PROV-01**: Copland has a `LlmClient` interface with normalized `LlmResponse` and `LlmUsage` value objects
+- [x] **PROV-02**: `AnthropicApiClient` implements `LlmClient` — existing behavior and prompt caching unchanged
 - [ ] **PROV-03**: User can set the default LLM provider in `~/.copland.yml`
 - [ ] **PROV-04**: User can override the LLM provider per repo in `.copland.yml`
 - [ ] **PROV-05**: User can configure different providers for selector, planner, and executor stages independently
@@ -58,8 +58,8 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| PROV-01 | Phase 14 | Pending |
-| PROV-02 | Phase 14 | Pending |
+| PROV-01 | Phase 14 | Complete |
+| PROV-02 | Phase 14 | Complete |
 | PROV-03 | Phase 15 | Pending |
 | PROV-04 | Phase 15 | Pending |
 | PROV-05 | Phase 15 | Pending |

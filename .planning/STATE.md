@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Provider & Asana Integration
-status: active
-stopped_at: ""
-last_updated: "2026-04-08T00:00:00Z"
-last_activity: 2026-04-08 -- Roadmap created for v1.1 (Phases 14-17)
+status: verifying
+stopped_at: Completed 14-llmclient-contracts 14-PLAN.md
+last_updated: "2026-04-08T15:26:03.064Z"
+last_activity: 2026-04-08
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** A reliable overnight agent that opens merge-ready PRs without intervention.
-**Current focus:** Phase 14 — LlmClient Contracts
+**Current focus:** Phase 14 — llmclient-contracts
 
 ## Current Position
 
-Phase: 14 — LlmClient Contracts
-Plan: —
-Status: Roadmap defined, ready to begin Phase 14
-Last activity: 2026-04-08 — v1.1 roadmap created (4 phases, 15 requirements mapped)
+Phase: 14 (llmclient-contracts) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-04-08
 
 Progress: [__________] 0%
 
@@ -64,6 +64,7 @@ Progress: [__________] 0%
 - Trend: v1.0 archived; v1.1 roadmap defined
 
 *Updated after each plan completion*
+| Phase 14-llmclient-contracts P14 | 5 | 4 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,9 @@ Recent decisions affecting current work:
 - Roadmap (v1.1): `openai-php/client` covers both Ollama and OpenRouter behind one `OpenAiCompatClient` — no second HTTP client package needed
 - Roadmap (v1.1): Anthropic `cache_control` blocks must be stripped before sending to non-Anthropic providers; normalize `stopReason` in `LlmResponse` (`end_turn` → `stop` parity) to prevent executor loop exhaustion on OpenAI-compat providers
 - Roadmap (v1.1): Asana GIDs handled as strings throughout pipeline to prevent type errors (SelectionResult.selectedIssueNumber widening required)
+- [Phase 14-llmclient-contracts]: LlmClient interface isolates three Claude services from AnthropicApiClient; complete() adapter on AnthropicApiClient wraps SDK types in plain value objects
+- [Phase 14-llmclient-contracts]: messages() kept public on AnthropicApiClient for backward test compatibility; AnthropicMessageSerializer::assistantContent() removed from executor since LlmResponse->content is already plain assoc arrays
+- [Phase 14-llmclient-contracts]: SystemBlock carries a cache flag so AnthropicApiClient.complete() injects CacheControlEphemeral only for Anthropic; future providers ignore this flag
 
 ### Pending Todos
 
@@ -89,6 +93,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-08T00:00:00Z
-Stopped at: v1.1 roadmap created
-Resume file: .planning/ROADMAP.md
+Last session: 2026-04-08T15:26:03.062Z
+Stopped at: Completed 14-llmclient-contracts 14-PLAN.md
+Resume file: None
