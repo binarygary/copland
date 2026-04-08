@@ -1,389 +1,122 @@
-# Technology Stack — Research
+# Stack Research: v1.1 Multi-Provider LLM + Asana
 
-**Project:** Copland (autonomous GitHub issue resolver)
-**Milestone scope:** Improve existing PHP CLI — prompt caching, retry/backoff, file read limits, cost tracking
-**Researched:** 2026-04-02
-**Overall confidence:** HIGH (Anthropic API shape from training + SDK source patterns; retry from established PHP ecosystem)
-
----
-
-## 1. Anthropic Prompt Caching
-
-**Confidence:** HIGH — cache_control API is stable, documented, and well-understood as of training cutoff.
-
-### How Caching Works
-
-The Anthropic Messages API supports a `cache_control` block on specific message parts. When present, the API attempts to cache the prefix of the conversation up to and including that block. Subsequent requests that share the same prefix use the cache instead of reprocessing those tokens.
-
-**Cache TTL:** 5 minutes (ephemeral). The cache is extended another 5 minutes on each hit. Under normal operation the executor's 12-round loop runs in 2-4 minutes, so the cache will not expire mid-run.
-
-**Cost model:**
-- Cache write: 25% more expensive than base input rate (one-time cost on first request)
-- Cache read: 90% cheaper than base input rate (paid on all subsequent requests)
-- Net effect: For a 12-round executor loop, rounds 2-12 pay 10% of normal system-prompt cost
-- Estimated savings on executor system prompt (~800 tokens): ~$0.000072 saved per 10 rounds at Sonnet rates; meaningful across hundreds of overnight runs
-
-**Minimum token threshold:** The system prompt must be at least 1,024 tokens for caching to activate. Verify the executor.md prompt meets this threshold; if it does not, padding with additional context or combining with tool definitions will push it over.
-
-### API Shape
-
-The `system` parameter changes from a plain string to an array of content blocks:
-
-```php
-// Before (current code — system is a plain string)
-$response = $this->client->messages->create(
-    model: $this->model,
-    maxTokens: 4096,
-    system: $systemPrompt,            // string
-    tools: $tools,
-    messages: $messages,
-);
-
-// After (with prompt caching — system is an array)
-$response = $this->client->messages->create(
-    model: $this->model,
-    maxTokens: 4096,
-    system: [
-        [
-            'type' => 'text',
-            'text' => $systemPrompt,
-            'cache_control' => ['type' => 'ephemeral'],
-        ],
-    ],
-    tools: $tools,
-    messages: $messages,
-);
-```
-
-**Where to apply cache_control in Copland:**
-
-| Location | Where in Code | Value |
-|----------|--------------|-------|
-| Executor system prompt | `ClaudeExecutorService.php` line 93 | `system` array with `cache_control` on the text block |
-| Executor tool definitions | Same call, `tools` parameter | `cache_control` on the last tool definition |
-| Planner system prompt | `ClaudePlannerService.php` line 52 | Less impact (single call), but same pattern applies |
-
-Caching the tools array alongside the system prompt is the highest-value change because both are sent on every round and the tools array is ~600 tokens. The `cache_control` marker should be placed on the **last element** of the block sequence you want cached — this tells the API to cache everything up to and including that point.
-
-To cache both system prompt and tools in one cache entry:
-
-```php
-// Cache system prompt
-$system = [
-    [
-        'type' => 'text',
-        'text' => $systemPrompt,
-        'cache_control' => ['type' => 'ephemeral'],
-    ],
-];
-
-// Cache tools (place cache_control on the last tool)
-$tools = $this->buildTools();
-$tools[count($tools) - 1]['cache_control'] = ['type' => 'ephemeral'];
-```
-
-Note: Tool-level `cache_control` support was added to the API — verify the installed `anthropic-ai/sdk ^0.8.0` passes through arbitrary keys on tool definitions. If the SDK strips unknown keys, the tool-level caching silently fails (no error, just no cache). System prompt caching works unconditionally since `system` is a top-level array the SDK passes through.
-
-### Usage Response — Tracking Cache Hits
-
-When caching is active, the usage object gains additional fields:
-
-```php
-$response->usage->inputTokens          // tokens not from cache
-$response->usage->cacheCreationInputTokens  // tokens written to cache (round 1 only)
-$response->usage->cacheReadInputTokens      // tokens read from cache (rounds 2-12)
-```
-
-**Required change to `AnthropicCostEstimator`:** The current estimator counts all `inputTokens` at full rate. With caching, cache-read tokens should be costed at 10% of the input rate, and cache-write tokens at 125%. To report accurate costs:
-
-```php
-// Accurate cost model with caching
-$inputCost   = ($inputTokens / 1_000_000) * $inputRate;               // uncached tokens
-$writeCost   = ($cacheWriteTokens / 1_000_000) * ($inputRate * 1.25); // cache write premium
-$readCost    = ($cacheReadTokens / 1_000_000) * ($inputRate * 0.10);  // cache read discount
-```
-
-If the SDK's response object does not expose these fields yet (depends on SDK version vs. API version), fall back to treating `inputTokens` as the total — costs will be slightly wrong but no breakage.
+**Project:** Copland v1.1
+**Researched:** 2026-04-08
+**Confidence:** MEDIUM overall (training knowledge; flagged per item)
 
 ---
 
-## 2. Retry / Backoff for Anthropic API Calls
+## Ollama / OpenAI-compatible
 
-**Confidence:** HIGH — HTTP error semantics are stable; PHP retry patterns are well-established.
+Ollama exposes a local HTTP server at `http://localhost:11434` with an OpenAI-compatible endpoint at `/v1/chat/completions`. The `/v1` path is the standard compatibility layer. [HIGH confidence]
 
-### Retryable vs. Non-Retryable Errors
-
-| HTTP Status | Meaning | Retry? |
-|-------------|---------|--------|
-| 429 | Rate limited | YES — respect `retry-after` header if present |
-| 500 | Internal server error | YES — transient server fault |
-| 502 | Bad gateway | YES — transient network/proxy |
-| 503 | Service unavailable | YES — transient overload |
-| 529 | Overloaded (Anthropic-specific) | YES — same as 503 |
-| 408 | Request timeout | YES — transient |
-| 400 | Bad request (malformed payload) | NO — permanent client error |
-| 401 | Unauthorized (bad API key) | NO — permanent |
-| 403 | Forbidden | NO — permanent |
-| 404 | Not found | NO — permanent |
-| 422 | Unprocessable entity | NO — permanent (malformed request structure) |
-
-Network-level errors (DNS failure, connection reset, socket timeout) should also be retried. These surface as `\GuzzleHttp\Exception\ConnectException` or similar.
-
-### Recommended Strategy
-
-**Exponential backoff with jitter, 3 attempts total:**
-
-```
-Attempt 1:  immediate
-Attempt 2:  sleep(1 + random_float(0, 0.5)) seconds
-Attempt 3:  sleep(2 + random_float(0, 1.0)) seconds
-Give up:    propagate exception
-```
-
-Jitter (random fraction of base delay) prevents thundering herd if multiple overnight runs hit the same rate limit window simultaneously.
-
-**For 429 with `retry-after` header:** Use the header value instead of the backoff formula. The Anthropic API often returns `retry-after: N` seconds. Guzzle surfaces response headers via `$e->getResponse()->getHeader('retry-after')`.
-
-### Where to Apply in Copland
-
-Three call sites need retry wrapping:
-
-| Service | Line | Priority | Why |
-|---------|------|----------|-----|
-| `ClaudeExecutorService.php` | ~90 | **Critical** | Multi-round loop; a failure in round 8 wastes all prior work |
-| `ClaudePlannerService.php` | ~52 | High | Single call; planner failure wastes selector cost |
-| `ClaudeSelectorService.php` | ~42 | Medium | First call; cheapest to lose, but retry is still free value |
-
-### Implementation Pattern
-
-Extract a private helper method to be shared across all three service classes (or a trait / base class):
+**Recommended package:** `openai-php/client ^0.10`
 
 ```php
-private function createWithRetry(array $params, int $maxAttempts = 3): mixed
-{
-    $attempt = 0;
-    $lastException = null;
+$client = OpenAI::factory()
+    ->withBaseUri('http://localhost:11434/v1')
+    ->withApiKey('ollama') // dummy — Ollama ignores it
+    ->make();
 
-    while ($attempt < $maxAttempts) {
-        try {
-            return $this->client->messages->create(...$params);
-        } catch (\Anthropic\Exceptions\ApiException $e) {
-            $status = $e->getCode(); // HTTP status code
-
-            // Non-retryable: throw immediately
-            if (in_array($status, [400, 401, 403, 404, 422], true)) {
-                throw $e;
-            }
-
-            $lastException = $e;
-            $attempt++;
-
-            if ($attempt >= $maxAttempts) {
-                break;
-            }
-
-            // Respect retry-after header on 429
-            $retryAfter = null;
-            if ($status === 429 && method_exists($e, 'getResponse') && $e->getResponse() !== null) {
-                $headers = $e->getResponse()->getHeaders();
-                $retryAfter = (int) ($headers['retry-after'][0] ?? $headers['Retry-After'][0] ?? 0);
-            }
-
-            $delay = $retryAfter > 0
-                ? $retryAfter
-                : (($attempt === 1 ? 1 : 2) + lcg_value() * $attempt);
-
-            sleep((int) ceil($delay));
-
-        } catch (\GuzzleHttp\Exception\ConnectException $e) {
-            // Network error — always retryable
-            $lastException = $e;
-            $attempt++;
-
-            if ($attempt >= $maxAttempts) {
-                break;
-            }
-
-            sleep((int) ceil($attempt + lcg_value()));
-        }
-    }
-
-    throw $lastException;
-}
+$response = $client->chat()->create([
+    'model'    => 'llama3.2',
+    'messages' => [['role' => 'user', 'content' => $prompt]],
+]);
+// $response->choices[0]->message->content
+// $response->usage->promptTokens / completionTokens
 ```
 
-**SDK exception class note:** The `anthropic-ai/sdk ^0.8.0` may use a different exception hierarchy. Check the installed SDK's `src/Exceptions/` directory for the correct base class name. Likely candidates: `ApiException`, `AnthropicException`, or a Guzzle `ClientException` wrapper. If the SDK wraps Guzzle exceptions directly, catch `\GuzzleHttp\Exception\RequestException` and inspect `$e->getResponse()->getStatusCode()`.
+**Alternative — raw GuzzleHttp:** Since GuzzleHttp is already a transitive dependency, the `/v1/chat/completions` endpoint can be called directly without adding a package. This matches the `GitHubService` pattern. Viable for a non-streaming use case, but `openai-php/client` handles request/response serialization more cleanly.
 
-**Avoid:** Third-party retry libraries (`spatie/guzzle-rate-limiter-middleware`, `caseyamcl/guzzle_retry_middleware`) — they add middleware at the Guzzle transport layer, which may conflict with the Anthropic SDK's own Guzzle client configuration. A simple inline retry loop is more transparent and easier to test.
+**Recommendation:** Use `openai-php/client` for both Ollama and OpenRouter — one package, same endpoint shape.
 
 ---
 
-## 3. File Read Size Management in Agentic Loops
+## OpenRouter
 
-**Confidence:** HIGH — the pattern is clear from the codebase analysis and general agentic loop literature.
-
-### The Problem (Specific to Copland)
-
-The `readFile()` method (line 285 of `ClaudeExecutorService.php`) returns the full file contents with no size limit:
+OpenRouter exposes an OpenAI-compatible API at `https://openrouter.ai/api/v1`. Requires a Bearer API key. [HIGH confidence]
 
 ```php
-return file_get_contents($fullPath);
+$client = OpenAI::factory()
+    ->withBaseUri('https://openrouter.ai/api/v1')
+    ->withApiKey($config->openRouterApiKey())
+    ->withHttpHeader('HTTP-Referer', 'https://github.com/binarygary/copland')
+    ->withHttpHeader('X-Title', 'Copland')
+    ->make();
 ```
 
-Every subsequent API call re-sends the full conversation history. A 500-line file read in round 2 of a 12-round loop is transmitted 11 more times. At ~75 tokens/KB and 20KB for a large PHP file, that is ~1,500 tokens × 11 rounds = 16,500 extra input tokens from a single read.
-
-### Recommended Pattern: Line Cap with Truncation Notice
-
-```php
-private function readFile(string $workspacePath, string $path, ExecutorPolicy $policy): string
-{
-    $normalizedPath = $policy->assertToolPathAllowed($path, 'read_file');
-    $fullPath = $workspacePath . '/' . ltrim($normalizedPath, '/');
-
-    if (! file_exists($fullPath)) {
-        return "Error: file not found: {$normalizedPath}";
-    }
-
-    $lines = file($fullPath, FILE_IGNORE_NEW_LINES);
-    $total = count($lines);
-    $cap = 300; // configurable via ExecutorPolicy
-
-    if ($total <= $cap) {
-        return implode("\n", $lines);
-    }
-
-    $truncated = implode("\n", array_slice($lines, 0, $cap));
-    return $truncated . "\n\n[FILE TRUNCATED — showing {$cap} of {$total} lines. Use read_file with offset/limit, or read_file_range if available.]";
-}
-```
-
-**Cap value recommendation:** 300 lines as default. Rationale:
-- Covers the vast majority of PHP service classes, which are typically 100-400 lines
-- A 300-line file is ~9KB, ~2,250 tokens — manageable in history
-- Files over 300 lines are usually large enough that Claude only needs the relevant section
-
-**Make the cap configurable** via `ExecutorPolicy` so the `.copland.yml` `max_executor_rounds` field's sibling can be `max_file_read_lines`. This matches the existing policy-driven design.
-
-### Optional: Offset/Range Support
-
-For the case where Claude legitimately needs to read beyond the cap, add an optional `offset` parameter to the `read_file` tool:
-
-```php
-// Tool definition addition
-'properties' => [
-    'path'   => ['type' => 'string'],
-    'offset' => ['type' => 'integer', 'description' => 'Line number to start reading from (1-indexed)', 'default' => 1],
-],
-```
-
-This allows Claude to read large files in windows without relaxing the cap. Priority: lower than the basic cap — the cap alone solves 90% of the cost problem.
-
-### What NOT to Do
-
-**Do not truncate by byte size.** PHP's `substr()` on file content can split multi-byte UTF-8 characters and create malformed strings that confuse the model. Line-based truncation is always safe.
-
-**Do not silently truncate.** The truncation notice is required so Claude knows there is more content and can request it. Silent truncation causes Claude to make incorrect assumptions about file completeness.
-
-**Do not apply the cap to `write_file` or `replace_in_file` content.** These operations must operate on the full content the model provides. The cost concern is on read returns entering the conversation history.
-
-### Command Output Truncation (Related)
-
-The same unbounded-return problem applies to `runCommand()`. Long test output or compiler errors can balloon context. A similar cap (e.g., last 200 lines of output, with a head notice) is appropriate but is lower priority than file reads.
+No separate package needed — same `openai-php/client` covers both Ollama and OpenRouter.
 
 ---
 
-## 4. Cost Estimation Improvements
+## Asana API
 
-**Confidence:** HIGH — derived directly from current `AnthropicCostEstimator.php` analysis.
+**Auth:** Personal Access Token (PAT). Bearer token in `Authorization` header. Stored in `~/.copland.yml`. [HIGH confidence]
 
-### Current State
+**Recommendation: Use raw GuzzleHttp — do NOT add `asana/asana` official SDK.**
 
-`AnthropicCostEstimator::forModel()` takes raw `inputTokens` and `outputTokens` and applies a single rate per direction. This is correct for uncached calls but will undercount savings once caching is enabled.
+Rationale:
+- Copland needs only two Asana operations: fetch tasks from a project, post a comment with the PR URL.
+- `GitHubService` already demonstrates this exact pattern (GuzzleHttp + Bearer token + JSON decode). `AsanaService` mirrors it identically.
+- The official `asana/asana` SDK is auto-generated and heavyweight (~300 generated classes) — overkill for two endpoints.
+- Avoids adding sub-dependencies to the PHAR build.
 
-### Required Changes When Caching Is Added
+**Endpoints needed:**
+- `GET https://app.asana.com/api/1.0/projects/{project_gid}/tasks?opt_fields=name,notes,assignee,completed` — fetch open tasks
+- `POST https://app.asana.com/api/1.0/tasks/{task_gid}/stories` — post a comment with PR link
 
-The `ModelUsage` data object and `forModel()` factory need to accept the three-way token split:
+**Rate limits:** Asana free: 150 req/min per user. Pro: 1500/min. Overnight pattern makes this a non-issue. [MEDIUM confidence]
 
-```php
-// New signature (backward-compatible with defaults)
-public static function forModel(
-    string $model,
-    int $inputTokens,
-    int $outputTokens,
-    int $cacheWriteTokens = 0,
-    int $cacheReadTokens = 0,
-): ModelUsage
+**Config shape for `~/.copland.yml`:**
+
+```yaml
+asana_api_key: "1/..."
+
+asana_projects:
+  - project_gid: "123456789"
+    repo: owner/repo
 ```
-
-Update cost formula:
-
-```php
-$inputCost  = ($inputTokens / 1_000_000) * $inputRate;
-$writeCost  = ($cacheWriteTokens / 1_000_000) * ($inputRate * 1.25);
-$readCost   = ($cacheReadTokens / 1_000_000) * ($inputRate * 0.10);
-```
-
-Store raw cache token counts in `ModelUsage` so the format string can surface them:
-
-```
-"12,450 input, 1,200 cached write, 8,600 cached read, 892 output, $0.0021 est."
-```
-
-This makes the "did caching help?" question answerable at a glance in run output.
-
-### Token Tracking in the Executor Loop
-
-The executor already accumulates `$totalInputTokens` and `$totalOutputTokens`. Add:
-
-```php
-$totalCacheWriteTokens = 0;
-$totalCacheReadTokens = 0;
-
-// Inside the loop, after $response
-if (isset($response->usage)) {
-    $totalInputTokens       += $response->usage->inputTokens ?? 0;
-    $totalOutputTokens      += $response->usage->outputTokens ?? 0;
-    $totalCacheWriteTokens  += $response->usage->cacheCreationInputTokens ?? 0;
-    $totalCacheReadTokens   += $response->usage->cacheReadInputTokens ?? 0;
-}
-```
-
-The `?? 0` fallback ensures this works with SDK versions that do not yet expose cache fields.
 
 ---
 
-## 5. Existing Stack — No Changes Required
+## What NOT to Add
 
-The existing stack is the right choice for all improvements. No new major dependencies are needed.
-
-| Technology | Version | Role | Status |
-|------------|---------|------|--------|
-| PHP | 8.2+ | Runtime | No change |
-| Laravel Zero | 12.x | CLI framework | No change |
-| `anthropic-ai/sdk` | ^0.8.0 | Anthropic API client | No change; verify cache fields present |
-| `guzzlehttp/guzzle` | 7.x | HTTP transport | No change; used for GitHub, not Anthropic directly |
-| `symfony/process` | bundled | Command execution | No change |
-| `symfony/yaml` | bundled | Config parsing | No change |
-
-**No new Composer dependencies required for any of the three improvements.** Retry logic is a pure PHP pattern. Prompt caching is a parameter change. File truncation is `file()` + `array_slice()`.
+| Package | Why Not |
+|---------|---------|
+| `asana/asana` (official SDK) | Auto-generated bloat; 2-endpoint use case doesn't warrant it |
+| Any LangChain-PHP / LLM framework | Immature in PHP ecosystem, overkill for known providers |
+| A second HTTP client | GuzzleHttp already present transitively |
+| Replace `anthropic-ai/sdk` with OpenAI-compat | Anthropic's tools/caching API is not in the OpenAI spec; would break existing prompt caching |
 
 ---
 
-## Sources
+## Packages to Add
 
-- Anthropic prompt caching documentation: https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching (verify at implementation time — TTL, minimum tokens, and tool-level cache_control availability)
-- Anthropic API errors reference: https://docs.anthropic.com/en/api/errors (verify HTTP 529 "overloaded" status and retry-after header behavior)
-- `anthropic-ai/sdk` PHP source: https://github.com/anthropics/anthropic-sdk-php (check exception class names and whether usage response exposes cache token fields in 0.8.x)
-- Cache token field names (`cacheCreationInputTokens`, `cacheReadInputTokens`): derived from Anthropic API response schema as of training cutoff August 2025. Verify against actual SDK response object before implementing cost tracking.
+| Package | Constraint | Purpose |
+|---------|-----------|---------|
+| `openai-php/client` | `^0.10` | Ollama + OpenRouter (both OpenAI-compat) |
 
-**Confidence summary:**
+GuzzleHttp for Asana is already present transitively. No other new packages needed.
 
-| Area | Confidence | Basis |
-|------|------------|-------|
-| cache_control API shape | HIGH | Stable API, consistent with documentation patterns as of training cutoff |
-| Cache TTL (5 minutes) | HIGH | Documented, unlikely to change without notice |
-| Cache token field names | MEDIUM | Known from training data; verify against installed SDK version |
-| Tool-level cache_control | MEDIUM | Supported by API; whether SDK passes through arbitrary keys needs code inspection |
-| Retry HTTP status codes | HIGH | Standard HTTP semantics; 529 is Anthropic-specific but documented |
-| PHP retry implementation | HIGH | Standard pattern, no library required |
-| File truncation pattern | HIGH | Direct analysis of existing code; no external dependency |
+**Note:** The `openai-php/client` version constraint `^0.10` is from training data (August 2025). Verify current stable version on Packagist before locking.
+
+---
+
+## Integration Notes
+
+**Key translation problem:** Existing services consume Anthropic SDK object shape (`$response->content[0]->text`, `$response->usage->inputTokens`). The OpenAI client returns `$response->choices[0]->message->content` and `$response->usage->promptTokens`. An `OpenAiCompatClient` wrapper normalizes this so the three service classes stay unchanged.
+
+**Prompt caching:** Anthropic-specific. `CacheControlEphemeral` and `TextBlockParam` types must be stripped when routing to Ollama/OpenRouter. The `OpenAiCompatClient` omits them from requests.
+
+**Tool calls:** Anthropic uses `input_schema` in tool definitions; OpenAI-compat uses `parameters`. The `OpenAiCompatClient` must translate the tool schema format. This is non-trivial for the executor phase — flag for dedicated phase research.
+
+**Cost tracking:** `AnthropicCostEstimator` hard-codes Anthropic pricing. For Ollama (local, $0), return zero-cost `ModelUsage`. For OpenRouter, pricing varies per model — report raw token counts and mark cost as "n/a".
+
+---
+
+## Open Questions
+
+1. **Tool schema translation:** Verify exact field mapping between Anthropic (`input_schema`) and OpenAI (`parameters`) before implementing the executor adapter.
+2. **`openai-php/client` exact version:** Confirm current stable on Packagist before locking the constraint.
+3. **Asana `opt_fields` field names:** Confirm `notes` vs `description` for task body in Asana API v1.
+4. **Executor tool loop with Ollama:** Many local models don't reliably return structured JSON for multi-round tool use. Requires model capability guidance in docs.
