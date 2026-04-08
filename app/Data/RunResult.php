@@ -9,7 +9,7 @@ class RunResult
         public readonly ?string $prUrl,
         public readonly ?int $prNumber,
         public readonly ?string $selectedIssueTitle,
-        public readonly ?int $selectedIssueNumber,
+        public readonly string|int|null $selectedTaskId,
         public readonly ?string $failureReason,
         public readonly array $log,
         public readonly string $startedAt,

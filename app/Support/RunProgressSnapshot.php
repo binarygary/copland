@@ -10,7 +10,7 @@ class RunProgressSnapshot
 
     public ?string $selectedIssueTitle = null;
 
-    public ?int $selectedIssueNumber = null;
+    public string|int|null $selectedTaskId = null;
 
     public ?ModelUsage $selectorUsage = null;
 
