@@ -5,11 +5,14 @@ namespace App\Commands;
 use App\Config\GlobalConfig;
 use App\Config\RepoConfig;
 use App\Data\RunResult;
+use App\Services\AsanaService;
+use App\Services\AsanaTaskSource;
 use App\Services\ClaudeExecutorService;
 use App\Services\ClaudePlannerService;
 use App\Services\ClaudeSelectorService;
 use App\Services\CurrentRepoGuardService;
 use App\Services\GitHubService;
+use App\Services\GitHubTaskSource;
 use App\Services\GitService;
 use App\Services\IssuePrefilterService;
 use App\Services\PlanValidatorService;
@@ -258,6 +261,18 @@ class RunCommand extends Command implements SignalableCommandInterface
 
             $git = new GitService;
 
+            // Task source selection (D-03, D-09) — read task_source from repo-level .copland.yml
+            $taskSource = $repoConfig->taskSource() === 'asana'
+                ? new AsanaTaskSource(
+                    new AsanaService(
+                        $globalConfig->asanaToken(),
+                        $globalConfig->asanaProjectForRepo($repo) ?? '',
+                        $globalConfig->asanaFiltersForRepo($repo),
+                    ),
+                    new GitHubService,
+                )
+                : new GitHubTaskSource(new GitHubService);
+
             $repoProfile = [
                 'repo_summary' => $repoConfig->repoSummary(),
                 'conventions' => $repoConfig->conventions(),
@@ -272,7 +287,7 @@ class RunCommand extends Command implements SignalableCommandInterface
             ];
 
             $orchestrator = new RunOrchestratorService(
-                taskSource: new \App\Services\GitHubTaskSource(new GitHubService),
+                taskSource: $taskSource,
                 prefilter: new IssuePrefilterService($repoConfig, new GitHubService, $repo),
                 selector: new ClaudeSelectorService($globalConfig, $selectorClient),
                 planner: new ClaudePlannerService($globalConfig, $plannerClient),
