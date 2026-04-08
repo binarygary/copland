@@ -15,6 +15,7 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 - Has direct automated coverage for the Anthropic retry wrapper, executor service, and orchestrator service.
 - Has onboarding docs for installation, repo policy setup, overnight automation, and morning review.
 - Phase 15 complete — provider implementations: `OpenAiCompatClient` (Ollama/OpenRouter), `LlmClientFactory` (D-05 per-stage resolution), `LlmResponseNormalizer`, `ToolSchemaTranslator`, `llmConfig()` getters, and Ollama reachability probe wired into `RunCommand`.
+- Phase 16 complete — `TaskSource` abstraction extracted: `App\Contracts\TaskSource` interface (4 methods), `GitHubTaskSource` thin delegation wrapper, `RunOrchestratorService` rewired to depend on the interface (zero direct `GitHubService` references), container binding in `AppServiceProvider`, and full test coverage including `GitHubTaskSourceTest` delegation tests. Enables Phase 17 (Asana) to plug in without touching the orchestrator.
 
 ## Current Milestone: v1.1 Multi-Provider & Asana Integration
 
@@ -107,4 +108,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-08 — Phase 15 provider implementations complete*
+*Last updated: 2026-04-08 — Phase 16 TaskSource extraction complete*
