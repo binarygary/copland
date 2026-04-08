@@ -163,6 +163,11 @@ YAML;
         );
     }
 
+    public function llmConfig(): array
+    {
+        return $this->data['llm'] ?? [];
+    }
+
     public function retryMaxAttempts(): int
     {
         return $this->data['api']['retry']['max_attempts'] ?? 3;

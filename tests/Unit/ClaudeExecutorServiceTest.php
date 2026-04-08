@@ -11,7 +11,7 @@ it('dispatches a tool_use response through the real executor tool flow', functio
 
     $service = makeExecutor([
         fakeResponse(
-            stopReason: 'tool_use',
+            stopReason: 'tool_calls',
             content: [
                 toolUseBlock('tool-1', 'write_file', [
                     'path' => 'src/output.txt',
@@ -20,7 +20,7 @@ it('dispatches a tool_use response through the real executor tool flow', functio
             ],
         ),
         fakeResponse(
-            stopReason: 'end_turn',
+            stopReason: 'stop',
             content: [textBlock('done')],
         ),
     ]);
@@ -71,7 +71,7 @@ it('captures blocked write policy violations in the failed execution result', fu
 
     $service = makeExecutor([
         fakeResponse(
-            stopReason: 'tool_use',
+            stopReason: 'tool_calls',
             content: [
                 toolUseBlock('tool-1', 'write_file', [
                     'path' => 'src/blocked.txt',
