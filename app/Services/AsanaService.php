@@ -13,7 +13,7 @@ use RuntimeException;
  * and tag removal. Follows the GitHubService constructor pattern with
  * injectable ?Client for testability.
  */
-final class AsanaService
+class AsanaService
 {
     private Client $http;
 
