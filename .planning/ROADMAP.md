@@ -54,7 +54,11 @@ Plans:
   2. `GitHubTaskSource` wraps the existing `GitHubService` and implements `TaskSource` — no functional change to GitHub issue behavior
   3. `RunOrchestratorService` is injected with a `TaskSource`; it no longer references `GitHubService` directly
   4. All existing orchestrator and GitHub service tests pass green with no modifications
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 16-01-PLAN.md — Create TaskSource interface and GitHubTaskSource delegation wrapper
+- [ ] 16-02-PLAN.md — Wire TaskSource into RunOrchestratorService and AppServiceProvider
+- [ ] 16-03-PLAN.md — Update RunOrchestratorServiceTest, create GitHubTaskSourceTest
 
 #### Phase 17: Asana Integration
 **Goal**: Users can configure Asana projects as a task source per repo; Copland fetches open Asana tasks, runs the same code pipeline, and posts the resulting PR link back as an Asana comment
@@ -74,7 +78,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 14. LlmClient Contracts | 1/1 | Complete   | 2026-04-08 |
 | 15. Provider Implementations | 0/3 | Complete    | 2026-04-08 |
-| 16. TaskSource Extraction | 0/? | Not started | - |
+| 16. TaskSource Extraction | 0/3 | Not started | - |
 | 17. Asana Integration | 0/? | Not started | - |
 
 ---
