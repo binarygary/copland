@@ -89,7 +89,7 @@ it('completes the happy path and opens a draft PR', function () {
     expect($stores['plan']->saved[0]['validationErrors'])->toBe([]);
     expect($stores['log']->payloads)->toHaveCount(1);
     expect($stores['log']->payloads[0]['status'])->toBe('succeeded');
-    expect($snapshot->selectedIssueNumber)->toBe(42);
+    expect($snapshot->selectedTaskId)->toBe(42);
 });
 
 it('returns skipped when the selector skips all issues', function () {

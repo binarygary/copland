@@ -26,7 +26,7 @@ Return ONLY valid JSON. No prose, no markdown, no explanation outside the JSON.
 ```json
 {
   "decision": "select" | "skip_all",
-  "selected_issue_number": 123 | null,
+  "selected_task_id": "1234567890" | null,
   "reason": "brief explanation",
   "rejections": [
     { "issue_number": 456, "reason": "too vague" }

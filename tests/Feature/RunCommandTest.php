@@ -81,7 +81,7 @@ it('logs pre-orchestrator repo failures and continues to later repos', function 
                 prUrl: 'https://example.test/pr/123',
                 prNumber: 123,
                 selectedIssueTitle: 'Ship the change',
-                selectedIssueNumber: 55,
+                selectedTaskId: 55,
                 failureReason: null,
                 log: ['[8/8] done'],
                 startedAt: '2026-04-03T20:00:00+00:00',

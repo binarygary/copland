@@ -57,7 +57,7 @@ class ClaudeSelectorService
 
         return new SelectionResult(
             decision: $json['decision'],
-            selectedIssueNumber: $json['selected_issue_number'] ?? null,
+            selectedTaskId: $json['selected_task_id'] ?? null,
             reason: $json['reason'] ?? '',
             rejections: $json['rejections'] ?? [],
             usage: $usage,

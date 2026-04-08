@@ -272,7 +272,7 @@ class RunCommand extends Command implements SignalableCommandInterface
             ];
 
             $orchestrator = new RunOrchestratorService(
-                github: new GitHubService,
+                taskSource: new \App\Services\GitHubTaskSource(new GitHubService),
                 prefilter: new IssuePrefilterService($repoConfig, new GitHubService, $repo),
                 selector: new ClaudeSelectorService($globalConfig, $selectorClient),
                 planner: new ClaudePlannerService($globalConfig, $plannerClient),
@@ -337,7 +337,7 @@ class RunCommand extends Command implements SignalableCommandInterface
             prUrl: null,
             prNumber: null,
             selectedIssueTitle: null,
-            selectedIssueNumber: null,
+            selectedTaskId: null,
             failureReason: $throwable->getMessage(),
             log: [],
             startedAt: $timestamp,
@@ -360,7 +360,7 @@ class RunCommand extends Command implements SignalableCommandInterface
         return [
             'repo' => $repo,
             'issue' => [
-                'number' => $result->selectedIssueNumber,
+                'number' => $result->selectedTaskId,
                 'title' => $result->selectedIssueTitle,
             ],
             'status' => $result->status,

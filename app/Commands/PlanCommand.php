@@ -72,14 +72,14 @@ class PlanCommand extends Command
 
         $selectedIssue = null;
         foreach ($prefiltered->accepted as $issue) {
-            if ($issue['number'] === $selection->selectedIssueNumber) {
+            if ((string) $issue['number'] === (string) $selection->selectedTaskId) {
                 $selectedIssue = $issue;
                 break;
             }
         }
 
         if ($selectedIssue === null) {
-            $this->error("Selected issue #{$selection->selectedIssueNumber} not found in prefiltered list.");
+            $this->error("Selected task #{$selection->selectedTaskId} not found in prefiltered list.");
 
             return;
         }

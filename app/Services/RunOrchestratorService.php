@@ -65,7 +65,7 @@ class RunOrchestratorService
                     prUrl: null,
                     prNumber: null,
                     selectedIssueTitle: null,
-                    selectedIssueNumber: null,
+                    selectedTaskId: null,
                     failureReason: $selection->reason,
                     log: $this->log,
                     startedAt: $startedAt,
@@ -77,7 +77,7 @@ class RunOrchestratorService
             }
 
             foreach ($prefiltered->accepted as $issue) {
-                if ($issue['number'] === $selection->selectedIssueNumber) {
+                if ((string) $issue['number'] === (string) $selection->selectedTaskId) {
                     $selectedIssue = $issue;
                     break;
                 }
@@ -89,8 +89,8 @@ class RunOrchestratorService
                     prUrl: null,
                     prNumber: null,
                     selectedIssueTitle: null,
-                    selectedIssueNumber: $selection->selectedIssueNumber,
-                    failureReason: "Selected issue #{$selection->selectedIssueNumber} not found",
+                    selectedTaskId: $selection->selectedTaskId,
+                    failureReason: "Selected task #{$selection->selectedTaskId} not found",
                     log: $this->log,
                     startedAt: $startedAt,
                     finishedAt: date(DATE_ATOM),
@@ -102,7 +102,7 @@ class RunOrchestratorService
 
             if ($snapshot !== null) {
                 $snapshot->selectedIssueTitle = $selectedIssue['title'];
-                $snapshot->selectedIssueNumber = $selectedIssue['number'];
+                $snapshot->selectedTaskId = $selectedIssue['number'];
             }
 
             $this->pushLog("      Selected issue #{$selectedIssue['number']}: {$selectedIssue['title']}");
@@ -121,7 +121,7 @@ class RunOrchestratorService
                     prUrl: null,
                     prNumber: null,
                     selectedIssueTitle: $selectedIssue['title'],
-                    selectedIssueNumber: $selectedIssue['number'],
+                    selectedTaskId: $selectedIssue['number'],
                     failureReason: $plan->declineReason,
                     log: $this->log,
                     startedAt: $startedAt,
@@ -148,7 +148,7 @@ class RunOrchestratorService
                     prUrl: null,
                     prNumber: null,
                     selectedIssueTitle: $selectedIssue['title'],
-                    selectedIssueNumber: $selectedIssue['number'],
+                    selectedTaskId: $selectedIssue['number'],
                     failureReason: $reason,
                     log: $this->log,
                     startedAt: $startedAt,
@@ -195,7 +195,7 @@ class RunOrchestratorService
                     prUrl: null,
                     prNumber: null,
                     selectedIssueTitle: $selectedIssue['title'],
-                    selectedIssueNumber: $selectedIssue['number'],
+                    selectedTaskId: $selectedIssue['number'],
                     failureReason: $executionResult->summary,
                     log: $this->log,
                     startedAt: $startedAt,
@@ -229,7 +229,7 @@ class RunOrchestratorService
                     prUrl: null,
                     prNumber: null,
                     selectedIssueTitle: $selectedIssue['title'],
-                    selectedIssueNumber: $selectedIssue['number'],
+                    selectedTaskId: $selectedIssue['number'],
                     failureReason: $reason,
                     log: $this->log,
                     startedAt: $startedAt,
@@ -279,7 +279,7 @@ class RunOrchestratorService
                 prUrl: $prUrl,
                 prNumber: $prNumber,
                 selectedIssueTitle: $selectedIssue['title'],
-                selectedIssueNumber: $selectedIssue['number'],
+                selectedTaskId: $selectedIssue['number'],
                 failureReason: null,
                 log: $this->log,
                 startedAt: $startedAt,
@@ -325,7 +325,7 @@ class RunOrchestratorService
         return [
             'repo' => $repo,
             'issue' => [
-                'number' => $result->selectedIssueNumber,
+                'number' => $result->selectedTaskId,
                 'title' => $result->selectedIssueTitle,
             ],
             'status' => $result->status,
@@ -357,7 +357,7 @@ class RunOrchestratorService
         return [
             'repo' => $repo,
             'issue' => [
-                'number' => $selectedIssue['number'] ?? $snapshot?->selectedIssueNumber,
+                'number' => $selectedIssue['number'] ?? $snapshot?->selectedTaskId,
                 'title' => $selectedIssue['title'] ?? $snapshot?->selectedIssueTitle,
             ],
             'status' => 'crashed',
