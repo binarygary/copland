@@ -15,11 +15,13 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 - Has direct automated coverage for the Anthropic retry wrapper, executor service, and orchestrator service.
 - Has onboarding docs for installation, repo policy setup, overnight automation, and morning review.
 
-## Next Milestone Goals
+## Current Milestone: v1.1 Multi-Provider & Asana Integration
 
-- Run multiple times per night so Copland can clear more than one issue across a backlog.
-- Add a stable `status` command over `~/.copland/logs/runs.jsonl`.
-- Surface cache savings more directly in the visible cost summary.
+**Goal:** Extend Copland to support multiple AI providers and Asana as a task source alongside GitHub Issues.
+
+**Target features:**
+- LLM provider abstraction: Anthropic (existing), Ollama (local, OpenAI-compatible), and OpenRouter as switchable backends. Global default in `~/.copland.yml`, per-repo override in `.copland.yml`.
+- Asana task source: Copland pulls tasks from configured Asana projects (each mapped to a repo in `~/.copland.yml`). Identical code workflow — still opens draft GitHub PRs. Adds a comment to the Asana task with the PR link on completion.
 
 ## Validated Capabilities
 
@@ -86,5 +88,22 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 | RunOrchestratorService injects artifact/log stores for service-level tests | Keeps orchestrator tests deterministic and exposed a missing executor-failure early exit | ✓ Phase 10 |
 | README and overnight guide document only shipped behavior, including the unimplemented `status` command caveat | Keeps onboarding accurate and prevents docs from outrunning the product | ✓ Phase 11 |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd:transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-04-03 after v1.0 milestone archival*
+*Last updated: 2026-04-08 — Milestone v1.1 started*

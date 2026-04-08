@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: archived
-status: ready_for_new_milestone
-stopped_at: Phase 3 complete
-last_updated: "2026-04-03T20:26:18Z"
-last_activity: 2026-04-03 -- v1.0 archived
+milestone: v1.1
+milestone_name: Multi-Provider & Asana Integration
+status: active
+stopped_at: ""
+last_updated: "2026-04-08T00:00:00Z"
+last_activity: 2026-04-08 -- Milestone v1.1 started
 progress:
-  total_phases: 13
-  completed_phases: 13
-  total_plans: 23
-  completed_plans: 23
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-04-03)
 
 ## Current Position
 
-Phase: None — READY FOR NEXT MILESTONE
-Plan: `$gsd-new-milestone`
-Status: v1.0 is archived. Start the next milestone when ready.
-Last activity: 2026-04-03 -- v1.0 archived
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements for v1.1
+Last activity: 2026-04-08 — Milestone v1.1 started
 
 Progress: [██████████] 100%
 
@@ -86,7 +86,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-- Start the next milestone with `$gsd-new-milestone`.
+- Run `/gsd:discuss-phase 14` to begin Phase 14.
 
 ### Quick Tasks Completed
 
