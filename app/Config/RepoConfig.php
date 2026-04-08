@@ -109,4 +109,9 @@ YAML;
     {
         return $this->data['llm'] ?? [];
     }
+
+    public function taskSource(): string
+    {
+        return $this->data['task_source'] ?? 'github';
+    }
 }
