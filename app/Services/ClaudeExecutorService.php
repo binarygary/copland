@@ -3,19 +3,17 @@
 namespace App\Services;
 
 use App\Config\GlobalConfig;
+use App\Contracts\LlmClient;
 use App\Data\ExecutionResult;
 use App\Data\PlanResult;
+use App\Data\SystemBlock;
 use App\Exceptions\PolicyViolationException;
-use App\Support\AnthropicApiClient;
 use App\Support\AnthropicCostEstimator;
-use App\Support\AnthropicMessageSerializer;
 use App\Support\ExecutorPolicy;
 use App\Support\ExecutorProgressFormatter;
 use App\Support\ExecutorRunState;
 use App\Support\FileMutationHelper;
 use App\Support\RunProgressSnapshot;
-use Anthropic\Messages\CacheControlEphemeral;
-use Anthropic\Messages\TextBlockParam;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -25,7 +23,7 @@ class ClaudeExecutorService
 
     public function __construct(
         private GlobalConfig $config,
-        private AnthropicApiClient $apiClient,
+        private LlmClient $apiClient,
         private ?string $systemPrompt = null,
     ) {
         $this->model = $this->config->executorModel();
@@ -50,10 +48,7 @@ class ClaudeExecutorService
     private function executeWithPolicy(string $workspacePath, PlanResult $plan, ExecutorPolicy $policy, ?callable $progressCallback = null, ?RunProgressSnapshot $snapshot = null): ExecutionResult
     {
         $system = [
-            TextBlockParam::with(
-                text: $this->systemPrompt(),
-                cacheControl: CacheControlEphemeral::with()
-            ),
+            new SystemBlock(text: $this->systemPrompt(), cache: true),
         ];
 
         $contractMessage = json_encode([
@@ -98,25 +93,25 @@ class ClaudeExecutorService
                 ExecutorProgressFormatter::waiting($round, count($toolCallLog), microtime(true) - $startTime)
             );
 
-            $response = $this->apiClient->messages(
+            $response = $this->apiClient->complete(
                 model: $this->model,
                 maxTokens: 4096,
-                system: $system,
-                tools: $tools,
                 messages: $messages,
+                tools: $tools,
+                systemBlocks: $system,
             );
 
-            if (isset($response->usage)) {
+            if ($response->usage !== null) {
                 $totalInputTokens += $response->usage->inputTokens;
                 $totalOutputTokens += $response->usage->outputTokens;
-                $totalCacheWriteTokens += $response->usage->cacheCreationInputTokens ?? 0;
-                $totalCacheReadTokens += $response->usage->cacheReadInputTokens ?? 0;
+                $totalCacheWriteTokens += $response->usage->cacheWriteTokens;
+                $totalCacheReadTokens += $response->usage->cacheReadTokens;
                 $this->updateSnapshot($snapshot, $startTime, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens);
             }
 
             $toolUses = 0;
             foreach ($response->content as $block) {
-                if ($block->type === 'tool_use') {
+                if ($block['type'] === 'tool_use') {
                     $toolUses++;
                 }
             }
@@ -127,21 +122,21 @@ class ClaudeExecutorService
                     round: $round,
                     toolUses: $toolUses,
                     elapsedSeconds: microtime(true) - $startTime,
-                    cacheWrite: $response->usage->cacheCreationInputTokens ?? 0,
-                    cacheRead: $response->usage->cacheReadInputTokens ?? 0
+                    cacheWrite: $response->usage->cacheWriteTokens,
+                    cacheRead: $response->usage->cacheReadTokens
                 )
             );
 
             $messages[] = [
                 'role' => 'assistant',
-                'content' => AnthropicMessageSerializer::assistantContent($response->content),
+                'content' => $response->content,
             ];
 
             if ($response->stopReason === 'end_turn') {
                 $finalText = '';
                 foreach ($response->content as $block) {
-                    if ($block->type === 'text') {
-                        $finalText .= $block->text;
+                    if ($block['type'] === 'text') {
+                        $finalText .= $block['text'];
                     }
                 }
 
@@ -157,7 +152,7 @@ class ClaudeExecutorService
 
             $toolResults = [];
             foreach ($response->content as $block) {
-                if ($block->type !== 'tool_use') {
+                if ($block['type'] !== 'tool_use') {
                     continue;
                 }
 
@@ -165,8 +160,8 @@ class ClaudeExecutorService
 
                 try {
                     $outcome = $this->dispatchTool(
-                        $block->name,
-                        (array) $block->input,
+                        $block['name'],
+                        (array) $block['input'],
                         $workspacePath,
                         $plan,
                         $policy,
@@ -175,12 +170,12 @@ class ClaudeExecutorService
                 } catch (Throwable $e) {
                     $isError = true;
                     $outcome = $this->formatToolError($e);
-                    $runState->recordFailedTool($block->name, $outcome);
+                    $runState->recordFailedTool($block['name'], $outcome);
                 }
 
                 $toolCallLog[] = [
-                    'tool' => $block->name,
-                    'input' => (array) $block->input,
+                    'tool' => $block['name'],
+                    'input' => (array) $block['input'],
                     'outcome' => substr($outcome, 0, 200),
                     'is_error' => $isError,
                 ];
@@ -189,8 +184,8 @@ class ClaudeExecutorService
                     $progressCallback,
                     ExecutorProgressFormatter::tool(
                         count($toolCallLog),
-                        $block->name,
-                        $this->toolTarget((array) $block->input)
+                        $block['name'],
+                        $this->toolTarget((array) $block['input'])
                     )
                 );
 
@@ -203,7 +198,7 @@ class ClaudeExecutorService
 
                 $toolResults[] = [
                     'type' => 'tool_result',
-                    'tool_use_id' => $block->id,
+                    'tool_use_id' => $block['id'],
                     'content' => $outcome,
                     'is_error' => $isError,
                 ];
