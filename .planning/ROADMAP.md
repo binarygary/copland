@@ -12,7 +12,7 @@
 ### Phases
 
 - [x] **Phase 14: LlmClient Contracts** — Introduce `LlmClient` interface, normalize `AnthropicApiClient` to implement it; no behavior change (completed 2026-04-08)
-- [ ] **Phase 15: Provider Implementations** — `OpenAiCompatClient`, factory, and config wiring for Ollama and OpenRouter
+- [x] **Phase 15: Provider Implementations** — `OpenAiCompatClient`, factory, and config wiring for Ollama and OpenRouter (completed 2026-04-08)
 - [ ] **Phase 16: TaskSource Extraction** — Extract `TaskSource` interface, refactor `GitHubService` into `GitHubTaskSource`; structural refactor, no behavior change
 - [ ] **Phase 17: Asana Integration** — `AsanaService`, `AsanaTaskSource`, config mapping, and PR link comment-back
 
@@ -73,7 +73,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 14. LlmClient Contracts | 1/1 | Complete   | 2026-04-08 |
-| 15. Provider Implementations | 0/3 | Not started | - |
+| 15. Provider Implementations | 0/3 | Complete    | 2026-04-08 |
 | 16. TaskSource Extraction | 0/? | Not started | - |
 | 17. Asana Integration | 0/? | Not started | - |
 
