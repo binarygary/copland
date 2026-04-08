@@ -113,3 +113,157 @@ GIT
     chdir($originalCwd);
     $_SERVER['HOME'] = $originalHome;
 });
+
+it('returns empty string for asanaToken when not configured', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $home = sys_get_temp_dir().'/copland-global-config-asana-'.uniqid();
+
+    mkdir($home, 0755, true);
+    $_SERVER['HOME'] = $home;
+
+    $config = new GlobalConfig;
+
+    expect($config->asanaToken())->toBe('');
+
+    $_SERVER['HOME'] = $originalHome;
+});
+
+it('returns asana_token from global config', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $home = sys_get_temp_dir().'/copland-global-config-asana-token-'.uniqid();
+
+    mkdir($home, 0755, true);
+    $_SERVER['HOME'] = $home;
+
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+claude_api_key: ""
+asana_token: "test-asana-pat-123"
+YAML
+    );
+
+    $config = new GlobalConfig;
+
+    expect($config->asanaToken())->toBe('test-asana-pat-123');
+
+    $_SERVER['HOME'] = $originalHome;
+});
+
+it('returns asana project GID for configured repo slug', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $home = sys_get_temp_dir().'/copland-global-config-asana-project-'.uniqid();
+
+    mkdir($home, 0755, true);
+    $_SERVER['HOME'] = $home;
+
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+claude_api_key: ""
+repos:
+  - slug: owner/repo
+    path: /tmp/owner-repo
+    asana_project: "1234567890"
+YAML
+    );
+
+    $config = new GlobalConfig;
+
+    expect($config->asanaProjectForRepo('owner/repo'))->toBe('1234567890');
+
+    $_SERVER['HOME'] = $originalHome;
+});
+
+it('returns null for asanaProjectForRepo when asana_project key absent', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $home = sys_get_temp_dir().'/copland-global-config-asana-project-absent-'.uniqid();
+
+    mkdir($home, 0755, true);
+    $_SERVER['HOME'] = $home;
+
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+claude_api_key: ""
+repos:
+  - slug: owner/repo
+    path: /tmp/owner-repo
+YAML
+    );
+
+    $config = new GlobalConfig;
+
+    expect($config->asanaProjectForRepo('owner/repo'))->toBeNull();
+
+    $_SERVER['HOME'] = $originalHome;
+});
+
+it('returns null for asanaProjectForRepo when slug not found', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $home = sys_get_temp_dir().'/copland-global-config-asana-project-missing-'.uniqid();
+
+    mkdir($home, 0755, true);
+    $_SERVER['HOME'] = $home;
+
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+claude_api_key: ""
+repos:
+  - slug: owner/repo
+    path: /tmp/owner-repo
+    asana_project: "1234567890"
+YAML
+    );
+
+    $config = new GlobalConfig;
+
+    expect($config->asanaProjectForRepo('unknown/repo'))->toBeNull();
+
+    $_SERVER['HOME'] = $originalHome;
+});
+
+it('returns asana filters array for configured repo slug', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $home = sys_get_temp_dir().'/copland-global-config-asana-filters-'.uniqid();
+
+    mkdir($home, 0755, true);
+    $_SERVER['HOME'] = $home;
+
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+claude_api_key: ""
+repos:
+  - slug: owner/repo
+    path: /tmp/owner-repo
+    asana_project: "1234567890"
+    asana_filters:
+      tags: [agent-ready]
+      section: Backlog
+YAML
+    );
+
+    $config = new GlobalConfig;
+
+    expect($config->asanaFiltersForRepo('owner/repo'))->toBe([
+        'tags' => ['agent-ready'],
+        'section' => 'Backlog',
+    ]);
+
+    $_SERVER['HOME'] = $originalHome;
+});
+
+it('returns empty array for asanaFiltersForRepo when asana_filters key absent', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $home = sys_get_temp_dir().'/copland-global-config-asana-filters-absent-'.uniqid();
+
+    mkdir($home, 0755, true);
+    $_SERVER['HOME'] = $home;
+
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+claude_api_key: ""
+repos:
+  - slug: owner/repo
+    path: /tmp/owner-repo
+    asana_project: "1234567890"
+YAML
+    );
+
+    $config = new GlobalConfig;
+
+    expect($config->asanaFiltersForRepo('owner/repo'))->toBe([]);
+
+    $_SERVER['HOME'] = $originalHome;
+});
