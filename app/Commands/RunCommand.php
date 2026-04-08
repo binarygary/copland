@@ -2,7 +2,6 @@
 
 namespace App\Commands;
 
-use Anthropic\Client;
 use App\Config\GlobalConfig;
 use App\Config\RepoConfig;
 use App\Data\RunResult;
@@ -17,14 +16,17 @@ use App\Services\PlanValidatorService;
 use App\Services\RunOrchestratorService;
 use App\Services\VerificationService;
 use App\Services\WorkspaceService;
-use App\Support\AnthropicApiClient;
 use App\Support\AnthropicCostEstimator;
+use App\Support\LlmClientFactory;
+use App\Support\OpenAiCompatClient;
 use App\Support\ProgressReporter;
 use App\Support\RunLogStore;
 use App\Support\RunProgressSnapshot;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use LaravelZero\Framework\Commands\Command;
-use Throwable;
 use Symfony\Component\Console\Command\SignalableCommandInterface;
+use Throwable;
 
 class RunCommand extends Command implements SignalableCommandInterface
 {
@@ -38,6 +40,7 @@ class RunCommand extends Command implements SignalableCommandInterface
         private ?GlobalConfig $globalConfig = null,
         private ?RunLogStore $runLogStore = null,
         private $repoRunner = null,
+        private $httpProber = null,
     ) {
         parent::__construct();
     }
@@ -220,12 +223,39 @@ class RunCommand extends Command implements SignalableCommandInterface
         }
 
         try {
-            $apiClient = new AnthropicApiClient(
-                client: new Client(apiKey: $globalConfig->claudeApiKey()),
-                maxAttempts: $globalConfig->retryMaxAttempts(),
-                baseDelaySeconds: $globalConfig->retryBaseDelaySeconds(),
-            );
             $repoConfig = new RepoConfig($path);
+
+            // Per-stage LLM client wiring (D-05 resolution order via factory)
+            $selectorClient = LlmClientFactory::forStage('selector', $globalConfig, $repoConfig);
+            $plannerClient = LlmClientFactory::forStage('planner', $globalConfig, $repoConfig);
+            $executorClient = LlmClientFactory::forStage('executor', $globalConfig, $repoConfig);
+
+            // Ollama reachability probe (D-15, D-16) — runs before orchestration starts
+            $ollamaStages = LlmClientFactory::ollamaStageConfigs($globalConfig, $repoConfig);
+            $probedUrls = [];
+            foreach ($ollamaStages as $entry) {
+                $url = $entry['base_url'];
+                if (! in_array($url, $probedUrls, true)) {
+                    $this->probeOllama($url);
+                    $probedUrls[] = $url;
+                }
+            }
+
+            // Ollama model capability warning (D-17, D-18) — once per unique unknown model
+            $warnedModels = [];
+            foreach ($ollamaStages as $entry) {
+                $model = $entry['model'] ?? '';
+                if ($model === '' || in_array($model, $warnedModels, true)) {
+                    continue;
+                }
+                $normalized = str_contains($model, ':') ? $model : $model.':latest';
+                if (! in_array($model, OpenAiCompatClient::TOOL_CAPABLE_MODELS, true)
+                    && ! in_array($normalized, OpenAiCompatClient::TOOL_CAPABLE_MODELS, true)) {
+                    $this->warn("Warning: Ollama model '{$model}' is not on the known tool-capable list. Tool use may fail.");
+                }
+                $warnedModels[] = $model;
+            }
+
             $git = new GitService;
 
             $repoProfile = [
@@ -244,12 +274,12 @@ class RunCommand extends Command implements SignalableCommandInterface
             $orchestrator = new RunOrchestratorService(
                 github: new GitHubService,
                 prefilter: new IssuePrefilterService($repoConfig, new GitHubService, $repo),
-                selector: new ClaudeSelectorService($globalConfig, $apiClient),
-                planner: new ClaudePlannerService($globalConfig, $apiClient),
+                selector: new ClaudeSelectorService($globalConfig, $selectorClient),
+                planner: new ClaudePlannerService($globalConfig, $plannerClient),
                 validator: new PlanValidatorService,
                 workspace: new WorkspaceService($repoConfig, $git),
                 git: $git,
-                executor: new ClaudeExecutorService($globalConfig, $apiClient),
+                executor: new ClaudeExecutorService($globalConfig, $executorClient),
                 verifier: new VerificationService($git),
             );
 
@@ -265,6 +295,36 @@ class RunCommand extends Command implements SignalableCommandInterface
             return $result;
         } finally {
             chdir($originalPath);
+        }
+    }
+
+    /**
+     * Probe an Ollama instance at {base_url}/api/tags before orchestration starts.
+     *
+     * Strips the /v1 suffix from base_url before probing — /api/tags is not
+     * under the /v1 path prefix used by the OpenAI-compatible endpoint.
+     *
+     * Uses $this->httpProber if injected (for testing); otherwise uses a real
+     * Guzzle client with a 3-second timeout.
+     */
+    private function probeOllama(string $baseUrl): void
+    {
+        $probeUrl = rtrim(preg_replace('#/v1$#i', '', $baseUrl), '/').'/api/tags';
+
+        if ($this->httpProber !== null) {
+            ($this->httpProber)($probeUrl);
+
+            return;
+        }
+
+        $httpClient = new Client(['timeout' => 3]);
+
+        try {
+            $httpClient->get($probeUrl);
+        } catch (ConnectException) {
+            throw new \RuntimeException("Ollama is not reachable at {$baseUrl}. Is it running?");
+        } catch (Throwable $e) {
+            throw new \RuntimeException("Ollama probe failed at {$baseUrl}: ".$e->getMessage());
         }
     }
 
