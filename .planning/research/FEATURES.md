@@ -1,385 +1,394 @@
-# Feature Landscape
+# Features Research: Multi-Provider LLM + Asana
 
-**Domain:** Autonomous overnight GitHub issue resolver CLI
-**Researched:** 2026-04-02
-**Confidence:** HIGH (grounded in codebase analysis + domain knowledge; WebSearch unavailable — findings from
-training knowledge, marked where applicable)
-
----
-
-## Context: What Already Exists
-
-Copland already implements the hard parts: issue selection, planning, git worktree isolation, policy enforcement,
-draft PR creation, per-repo config, SIGINT cost reporting, and token usage tracking. This milestone is about
-making it reliable enough to leave running overnight and trustworthy enough to review each morning.
-
-The current logging model is plain text strings accumulated in `RunOrchestratorService.log[]` and printed via
-`progressCallback`. The current cost display is per-stage token counts plus estimated USD printed after the run.
-There is no persistent log file. There is no multi-repo runner. There is no cron setup.
+**Domain:** Autonomous overnight GitHub issue resolver CLI — v1.1 extension
+**Researched:** 2026-04-08
+**Confidence:** MEDIUM overall (WebSearch and WebFetch unavailable; findings from training knowledge
+cross-referenced against codebase internals. Critical API surface verified against published documentation
+patterns; flagged where verification needed.)
 
 ---
 
-## Table Stakes
+## LLM Provider Abstraction
 
-Features an overnight agent must have to be trustworthy. Missing these means you can't tell if it worked,
-what it spent, or whether it ran at all.
+### Table Stakes
 
-| Feature | Why Expected | Complexity | Current State |
-|---------|--------------|------------|---------------|
-| Persistent run log to file | Cron output is lost if not redirected. Morning review requires a file. | Low | Not present — logs go to stdout only |
-| Run start/end timestamps in log | Essential for answering "when did this run?" | Trivial | Not present |
-| Outcome summary at top of log | Morning review should not require reading 80 lines to find pass/fail | Low | Not present |
-| Cost-per-run in log | Baseline for detecting cost regressions | Low | Printed to stdout, not persisted |
-| Failure reason in log | Distinguish transient API failure vs policy violation vs bad plan | Trivial | `failureReason` exists in RunResult, not in log file |
-| Multi-repo sequential execution | Single cron entry that runs all configured repos | Medium | Not present — single repo per invocation |
-| macOS launchd plist (not cron) | cron is deprecated on macOS; `launchctl` is the correct mechanism | Low | Not present |
-| HOME env var resolution for cron | `$_SERVER['HOME']` is unset under launchd — breaks GlobalConfig and PlanArtifactStore | Low | Known bug in CONCERNS.md, not fixed |
-| API retry on transient errors | Overnight runs must not die on a 429 or 5xx | Low | Known issue in CONCERNS.md, not fixed |
+Users adding a second LLM provider to a tool like Copland expect:
 
----
+| Behavior | Why Expected | Complexity |
+|----------|--------------|------------|
+| Global provider default in `~/.copland.yml` | One config location controls all repos | Low |
+| Per-repo provider override in `.copland.yml` | Some repos may need a more capable cloud model while others run local | Low |
+| Same three model roles (selector, planner, executor) respected per provider | Core pipeline shape does not change | Low |
+| Model name configurable per role per provider | Different providers have wildly different model name formats | Low |
+| Clear error if provider not reachable | Ollama down at 2am should fail loudly, not silently produce empty PRs | Low |
+| Token usage still tracked | Cost display is a shipped feature; it must not regress for cloud providers | Medium |
+| Run log still records provider name + model | Morning review must show which provider ran | Trivial |
 
-## Differentiators
+### Differentiators
 
-Features that make Copland excellent rather than just functional. These add value without being blockers.
+| Behavior | Value | Complexity |
+|----------|-------|------------|
+| Fallback provider chain (Ollama → OpenRouter → Anthropic) | If local model fails, fall through to cloud | High — retry logic now has provider dimension |
+| Cost display shows $0.00 for Ollama runs | Surfaces the value of local inference | Low — just need a zero-cost path in estimator |
+| Provider shown in run summary line | "executor=ollama/llama3.2" vs "executor=anthropic/claude-sonnet-4-6" | Trivial |
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Per-issue cost breakdown in log | Enables answering "was this issue worth automating?" over time | Low | Data exists in ModelUsage objects; just needs formatting into log |
-| Cache savings surfaced in cost display | Shows actual vs would-have-paid, rewards prompt caching investment | Low | Needs cache token tracking once caching is wired |
-| Run index / nightly summary line | One-line digest per repo: "2 runs: 1 PR opened, 1 skipped — $0.08" | Low | Useful when cron runs multiple times per night |
-| Log rotation (keep last N runs) | Prevents unbounded disk use from nightly files | Trivial | Implement alongside log file creation |
-| Stale worktree cleanup in log | Surfaces orphaned worktrees from previous failures | Low | CONCERNS.md flags this as a scaling issue |
-| Executor round count in summary | Signals whether the agent worked efficiently or struggled | Trivial | `toolCallCount` already in ExecutionResult |
-| Per-repo time-in-executor in log | Surfaces slow repos that need prompt caching or model downgrades | Trivial | `durationSeconds` already in ExecutionResult |
+### Anti-Features (avoid)
 
----
+| Anti-Feature | Why Avoid |
+|--------------|-----------|
+| Auto-selecting provider based on issue complexity | Over-engineering. User configures the provider; let them own the decision. |
+| Parallel requests to multiple providers for "best of" | Multiplies cost and complexity. Not appropriate for an overnight agent. |
+| Provider-specific prompt variants | One prompt template should work for any capable LLM. If it doesn't, fix the prompt — don't fork it. |
+| Caching architecture differences between providers | Anthropic caching is Anthropic-specific. Do not attempt to retrofit cache_control blocks onto OpenAI-compat APIs — just skip them. |
+| Streaming responses | Copland already uses blocking message calls. Adding streaming adds complexity with no benefit for a non-interactive agent. |
 
-## Anti-Features
+### Provider Abstraction Design Notes
 
-Things to deliberately NOT build in this milestone. Each has a concrete reason.
+Copland's current LLM surface is `AnthropicApiClient` — a thin retry wrapper that calls
+`$this->client->messages->create(...)` using the `anthropic-ai/sdk` typed client. The services
+(`ClaudeSelectorService`, `ClaudePlannerService`, `ClaudeExecutorService`) accept an `AnthropicApiClient`
+instance via constructor injection and call `$apiClient->messages(model, maxTokens, system, tools, messages)`.
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| Web dashboard or log viewer | Adds infrastructure complexity to a CLI-only personal tool. PROJECT.md explicitly calls it out of scope. | `tail -f` the log file, or `cat ~/.copland/runs/nightly.log` |
-| Parallel multi-repo execution | Tempting but wrong: shared git state and API rate limits make parallel runs risky. Sequential is predictable. | Implement sequential multi-repo with a `repos:` list in global config |
-| Slack / webhook notifications | Notification fatigue and added dependencies. The morning log review workflow is the right model for overnight runs. | Persist a clean log file; review on wake |
-| Issue re-queuing on failure | An agent that silently retries failed issues creates duplicate PR risk and obscures real problems. | Log the failure, leave the issue labeled, let the human decide |
-| Log shipping / remote storage | Complexity without benefit for a personal tool. | Local file is sufficient |
-| Structured JSON log for machine consumption | Over-engineering for a single user. Human-readable structured text is the right balance. | Use consistent key: value line format, not JSON |
-| Interactive cron setup wizard | A one-time copy-paste of a plist is faster than building a wizard that handles edge cases. | Document the launchd plist in README; provide `copland cron:install` as a stretch goal only |
-| Run resumption / checkpointing | Complex, adds serialization surface area, not needed at current scale (most runs are 30-60s). PROJECT.md documents this as a scaling path, not a current requirement. | Fix retry/backoff instead; that covers 90% of failure cases |
+**The right abstraction boundary is a provider-agnostic `LlmClient` interface** that replaces
+`AnthropicApiClient` at the injection site. Each provider implements this interface. The services
+never change — they call `$this->client->messages(...)` regardless of which backend is running.
 
----
+**Response normalization:** Anthropic's SDK returns typed objects (`$response->content[0]->text`,
+`$response->usage->inputTokens`). OpenAI-compatible APIs (Ollama, OpenRouter) return arrays or stdClass with
+`choices[0].message.content` and `usage.prompt_tokens` / `usage.completion_tokens`. The provider adapter
+must normalize these into the same object shape that the services expect.
 
-## Feature: Structured Run Log
-
-### What Good Overnight Agent Logs Look Like
-
-The mental model is an asynchronous "report for morning review." You wake up, run `cat ~/.copland/logs/nightly.log`
-(or check a per-run file), and in 30 seconds you know: what ran, whether it worked, what it cost, why anything failed.
-
-**Confidence:** HIGH — derived from first principles and the existing codebase structure.
-
-### Required Fields in a Run Log Entry
-
-A well-formed run log record for Copland should contain:
-
-```
-[2026-04-02 02:14:07] RUN START  repo=owner/repo
-[2026-04-02 02:14:07] STEP 1/8   Fetching issues (12 found, 3 accepted after prefilter)
-[2026-04-02 02:14:08] STEP 2/8   Selector: selected issue #42 "Add dark mode toggle"
-[2026-04-02 02:14:09] STEP 3/8   Planner: accepted (3 files, 87 lines)
-[2026-04-02 02:14:09] STEP 4/8   Plan validated OK
-[2026-04-02 02:14:10] STEP 5/8   Branch feature/dark-mode-toggle created
-[2026-04-02 02:14:10] STEP 6/8   Executor: 9 rounds, 23 tool calls, 61s
-[2026-04-02 02:14:12] STEP 7/8   Verification: passed (3 files, 84 lines)
-[2026-04-02 02:14:14] STEP 8/8   PR #117 opened: https://github.com/owner/repo/pull/117
-[2026-04-02 02:14:14] COST       selector=$0.0001 planner=$0.0021 executor=$0.0187 total=$0.0209
-[2026-04-02 02:14:14] RUN END    status=succeeded duration=67s
-```
-
-For a failure:
-```
-[2026-04-02 03:02:11] RUN START  repo=owner/repo
-[2026-04-02 03:02:11] STEP 1/8   Fetching issues (12 found, 3 accepted after prefilter)
-[2026-04-02 03:02:12] STEP 2/8   Selector: selected issue #55 "Refactor auth middleware"
-[2026-04-02 03:02:13] STEP 3/8   Planner: accepted
-[2026-04-02 03:02:13] STEP 4/8   Plan validation FAILED: blocked path src/Auth accessed
-[2026-04-02 03:02:13] COST       selector=$0.0001 planner=$0.0019 total=$0.0020
-[2026-04-02 03:02:13] RUN END    status=failed reason="blocked path src/Auth accessed" duration=2s
-```
-
-### Log Format Recommendations
-
-**Format:** Human-readable structured text. One line per event. Bracketed ISO timestamp prefix. ALL CAPS event
-type token. Key=value pairs for machine-parseable fields.
-
-**Not JSON.** JSON logs require a parser to read. This is a personal tool reviewed by a human. The key=value
-format is grep-friendly (`grep "status=failed" ~/.copland/logs/nightly.log`) without being verbose.
-
-**Not unstructured prose.** The current log format ("      Selector decision: skip_all — no suitable issues")
-is not grep-friendly, has inconsistent indentation, and mixes step context with outcome.
-
-**File layout:**
-
-```
-~/.copland/logs/
-  nightly.log         # appended to on every run (all repos, all runs)
-  runs/
-    owner__repo/
-      2026-04-02T02-14-07.log   # per-run file for deep inspection
-```
-
-Append to `nightly.log` for morning review. Write a per-run file for debugging. Rotate nightly.log to keep
-last 30 days (or last N lines, ~100 lines/run x 10 runs = 1000 lines — easily manageable).
-
-### Critical Fields
-
-| Field | Where | Why |
-|-------|-------|-----|
-| Timestamp (ISO, local TZ) | Every line | Correlate with other system events |
-| Event type token | Every line | `grep RUN_END nightly.log` |
-| Repo identifier | RUN START/END | Multi-repo disambiguates entries |
-| Issue number + title | STEP 2 | First thing you want to know in morning review |
-| Stage decision outcomes | Each step | "why did it stop at step 4?" |
-| Executor rounds + tool calls | STEP 6 | Signals thrashing vs clean run |
-| Per-stage cost | COST line | Baseline for cost regression detection |
-| Total cost | COST line | The number you actually care about |
-| Status + failure reason | RUN END | The headline |
-| Duration | RUN END | Watch for slow runs |
-
-### What NOT to Log
-
-- Full tool call inputs/outputs (that's the `.claude/` artifact, not the run log)
-- Raw API request/response bodies
-- Internal PHP stack traces (log message + exception type only)
-- Every executor round's intermediate state (log the summary, not each round)
+**Tool use (function calling):** The executor relies on Anthropic's tool-use API. OpenAI-compatible
+endpoints support function calling via the `tools` parameter with a different schema format (OpenAI format
+vs Anthropic format). This is the single hardest compatibility problem. See PITFALLS.md.
 
 ---
 
-## Feature: Cost-Per-Run Surfacing
+## Ollama Integration
 
-### Current State
+### Table Stakes
 
-Copland already calculates cost correctly. `AnthropicCostEstimator` computes per-model USD estimates.
-`ModelUsage` tracks input/output tokens per stage. `RunCommand.renderUsage()` prints them to stdout.
+| Behavior | Why Expected | Complexity |
+|----------|--------------|------------|
+| Calls `http://localhost:11434/v1/chat/completions` (OpenAI-compatible endpoint) | Ollama's documented OpenAI-compat endpoint; all serious Ollama integrations use this path | Low |
+| Configurable base URL (`ollama_base_url`) | User may run Ollama on a non-standard port or remote host | Trivial |
+| No authentication required by default | Ollama local runs have no auth out of the box | Low |
+| Model name passed as configured string | Ollama model names look like `llama3.2`, `qwen2.5-coder:7b`, `mistral` | Trivial |
+| Graceful failure if Ollama not running | Connection refused at 2am must produce a clear error, not a PHP fatal | Low |
+| Tool/function calling supported for executor | The executor requires multi-turn tool use; the model must support it | Medium — not all Ollama models support function calling well |
 
-What's missing:
+### Expected Behavior
 
-1. Cost is not persisted — it's lost when the terminal closes or cron swallows stdout
-2. Cost is not in the run log — it's only in the final stdout block
-3. No total-across-runs accounting — no way to see "I spent $0.87 this week"
-4. Cache savings are not visible — once prompt caching is added, the cost display should show it
+**API surface** (HIGH confidence — Ollama OpenAI-compat endpoint is well-documented):
+- Base URL: `http://localhost:11434/v1`
+- Endpoint: `POST /chat/completions`
+- Auth: None (or optional `Authorization: Bearer` with any non-empty string for compatibility)
+- Request format: OpenAI chat completions format
+  ```json
+  {
+    "model": "llama3.2",
+    "messages": [{"role": "user", "content": "..."}],
+    "tools": [...],
+    "stream": false
+  }
+  ```
+- Response format: OpenAI response shape
+  ```json
+  {
+    "choices": [{"message": {"role": "assistant", "content": "...", "tool_calls": [...]}}],
+    "usage": {"prompt_tokens": 120, "completion_tokens": 48, "total_tokens": 168}
+  }
+  ```
 
-### How to Surface Cost Usefully
+**Token counting:** Ollama returns `usage.prompt_tokens` / `completion_tokens` in the OpenAI format, not
+Anthropic's `inputTokens` / `outputTokens`. The adapter normalizes this. No cache tokens — cost is $0.00.
 
-**In CLI output (interactive runs):** The current format is already good. Keep it:
-```
-Usage:
-  - Selector:  1,204 input,  143 output, $0.0001 est.
-  - Planner:   8,912 input,  621 output, $0.0021 est.
-  - Executor: 47,381 input, 2,847 output, $0.0187 est.
-  - Total:    57,497 input, 3,611 output, $0.0209 est.
-  - Executor elapsed: 61s
-```
+**Function calling quality:** MEDIUM confidence — support varies by model. Models explicitly trained for
+function calling (e.g., `qwen2.5-coder`, `mistral-nemo`, `llama3.1` and later with `tools` support) work.
+General-purpose models may produce malformed tool call JSON or ignore the tools parameter. The executor
+must handle this gracefully (existing thrashing detection in `ExecutorRunState` will catch repeated bad calls,
+but the failure mode will be "thrashing abort" not "clean skip").
 
-One improvement: add a "cached tokens" line once prompt caching is active. Anthropic's API returns
-`cache_read_input_tokens` and `cache_creation_input_tokens` separately. Surface them:
-```
-  - Cache savings: 38,200 tokens read from cache (~$0.0115 saved)
-```
+**Practical constraint:** Ollama is most useful for the selector and planner roles (no tool calling required —
+just JSON output). Using Ollama for the executor requires a function-calling-capable model. Recommend config
+documentation that calls this out explicitly.
 
-**Confidence:** MEDIUM — Anthropic API does return cache token breakdown as of mid-2024; verify field names
-against current SDK version before implementing.
+**Connection refused handling:** Guzzle will throw a `ConnectException` if Ollama is not running. The
+adapter must catch this and convert it to a `RuntimeException` with a human-readable message ("Ollama is not
+running at http://localhost:11434 — start it with `ollama serve`").
 
-**In overnight log (cron runs):** A single COST line at run end, as shown above. The format
-`selector=$X planner=$X executor=$X total=$X` is scannable in `nightly.log`.
-
-**Weekly/monthly totals:** Out of scope for this milestone. The log file is sufficient to derive totals manually.
-Don't build accounting infrastructure for a personal tool.
-
-### Anti-pattern: Cost Alarmism
-
-Do not add cost warnings like "This run cost $0.08 — consider reducing scope." The user decided the scope.
-Surface the number, let the human interpret it. Warnings create noise and don't respect user judgment.
-
----
-
-## Feature: Multi-Repo Sequential Runs
-
-### Design
-
-A `repos:` list in `~/.copland.yml`:
-
+**Config surface in `~/.copland.yml`:**
 ```yaml
-repos:
-  - owner/repo-a
-  - owner/repo-b
-  - owner/repo-c
+provider: ollama           # or: anthropic, openrouter
+
+ollama:
+  base_url: http://localhost:11434/v1   # optional, this is the default
+
+models:
+  selector: llama3.2
+  planner: qwen2.5-coder:7b
+  executor: qwen2.5-coder:7b
 ```
 
-`copland run` with no argument iterates this list in order, running one issue per repo per invocation.
-
-**Sequential, not parallel.** Each run modifies git state in the target repo's worktree. Parallel runs
-targeting the same base branch would require coordination. Sequential is simpler and sufficient — cron
-handles parallelism over time, not within a single invocation.
-
-**Fail-and-continue.** If repo-a fails (API error, plan validation failure), log the failure and continue
-to repo-b. Do not abort the entire run. This is the most important behavioral requirement for overnight use.
-**Confidence:** HIGH — this is standard practice for batch CLI tools.
-
-**Per-repo log entries.** The `nightly.log` already needs the repo identifier on each line (see above).
-Multi-repo makes this mandatory.
+Per-repo override in `.copland.yml`:
+```yaml
+provider: anthropic        # override to cloud for this specific repo
+models:
+  executor: claude-sonnet-4-6
+```
 
 ---
 
-## Feature: macOS Cron Setup
+## OpenRouter Integration
 
-### cron vs launchd
+### Table Stakes
 
-**Use launchd, not cron.** On macOS, `cron` works but is not the native mechanism. launchd is what Apple
-uses for all scheduled tasks, handles sleep/wake correctly, and persists across reboots. More importantly:
+| Behavior | Why Expected | Complexity |
+|----------|--------------|------------|
+| Calls `https://openrouter.ai/api/v1/chat/completions` | OpenRouter's documented endpoint | Low |
+| Authenticates with `Authorization: Bearer <api_key>` | Standard Bearer token auth | Trivial |
+| `openrouter_api_key` stored in `~/.copland.yml` (not env var) | Consistent with existing `claude_api_key` pattern | Trivial |
+| Model name passed as `provider/model` string (e.g., `anthropic/claude-3-haiku`, `openai/gpt-4o-mini`) | OpenRouter model naming convention | Trivial |
+| HTTP-level retry on 429 and 5xx | Overnight reliability requirement; same as existing Anthropic retry policy | Low |
+| Token usage tracked for cost display | OpenRouter returns usage in OpenAI format | Low |
 
-- cron on macOS does not set `HOME` — this breaks `GlobalConfig` and `PlanArtifactStore` which use `$_SERVER['HOME']`
-- launchd plist can set `EnvironmentVariables` explicitly, including `HOME` and `PATH`
-- launchd `StandardOutPath` / `StandardErrorPath` redirects output to a file automatically — no `>> logfile 2>&1` hacks
+### Expected Behavior
 
-**Confidence:** HIGH — macOS launchd behavior is well-established. The HOME env var issue is documented in
-CONCERNS.md as a known bug triggered by "cron/systemd environments where HOME is not inherited."
+**API surface** (HIGH confidence — OpenRouter is OpenAI-compatible and well-documented):
+- Base URL: `https://openrouter.ai/api/v1`
+- Endpoint: `POST /chat/completions`
+- Auth: `Authorization: Bearer sk-or-...` (OpenRouter API key format)
+- Optional headers that OpenRouter recommends for attribution:
+  - `HTTP-Referer: https://github.com/binarygary/copland`
+  - `X-Title: Copland`
+- Request/response format: OpenAI chat completions (identical shape to Ollama above)
+- Tool calling: Supported and reliable — OpenRouter routes to models that support it (e.g.,
+  `anthropic/claude-3-haiku-20240307`, `openai/gpt-4o-mini`). Model must support function calling —
+  caller's responsibility to pick an appropriate model.
 
-### Standard launchd Plist for PHP CLI on macOS
+**Rate limiting:** OpenRouter enforces per-key rate limits. 429 responses should use the same retry/backoff
+as the existing Anthropic client. `Retry-After` header may be present; the adapter should respect it if
+available, otherwise fall back to exponential backoff.
 
-Location: `~/Library/LaunchAgents/com.user.copland.plist`
+**Cost tracking:** OpenRouter returns token counts in `usage.prompt_tokens` / `usage.completion_tokens`.
+OpenRouter-specific cost data is available in response headers (`x-openrouter-cost`), but this requires
+header inspection. A simpler approach: use the same model-name-based rate estimation as the existing
+`AnthropicCostEstimator`, extended with common OpenRouter model rates. This is "good enough" for a personal
+tool. Exact billing is visible in the OpenRouter dashboard.
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.user.copland</string>
+**Config surface in `~/.copland.yml`:**
+```yaml
+provider: openrouter
 
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/local/bin/php</string>
-        <string>/usr/local/bin/copland</string>
-        <string>run</string>
-    </array>
+openrouter:
+  api_key: sk-or-...
+  # Optional: site_url and app_name for attribution headers
 
-    <key>StartCalendarInterval</key>
-    <array>
-        <dict>
-            <key>Hour</key>  <integer>2</integer>
-            <key>Minute</key> <integer>0</integer>
-        </dict>
-        <dict>
-            <key>Hour</key>  <integer>4</integer>
-            <key>Minute</key> <integer>0</integer>
-        </dict>
-    </array>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>HOME</key>
-        <string>/Users/USERNAME</string>
-        <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-    </dict>
-
-    <key>StandardOutPath</key>
-    <string>/Users/USERNAME/.copland/logs/launchd.log</string>
-
-    <key>StandardErrorPath</key>
-    <string>/Users/USERNAME/.copland/logs/launchd-error.log</string>
-
-    <key>RunAtLoad</key>
-    <false/>
-</dict>
-</plist>
+models:
+  selector: openai/gpt-4o-mini
+  planner: anthropic/claude-3-5-sonnet
+  executor: anthropic/claude-3-5-sonnet
 ```
 
-Key decisions:
-- `StartCalendarInterval` as array = multiple run times (2am and 4am to clear backlog)
-- `EnvironmentVariables.HOME` = fixes the known HOME bug without code change
-- `PATH` includes Homebrew prefix (`/opt/homebrew/bin`) for Apple Silicon Macs where `gh` and `php` live
-- `StandardOutPath` = captured log for debugging launchd behavior separately from Copland's own `nightly.log`
-- `RunAtLoad: false` = don't run on `launchctl load`, only on schedule
+**Differences from direct Anthropic:**
+- Anthropic prompt caching (`cache_control` blocks) is NOT available via OpenRouter (MEDIUM confidence —
+  caching requires direct Anthropic API access). Do not pass cache_control blocks when provider is openrouter.
+- Response object shape uses OpenAI format, not Anthropic format. The adapter normalizes this.
+- Some models via OpenRouter may not support function calling. Model selection is user's responsibility.
 
-**Load command:**
-```bash
-launchctl load ~/Library/LaunchAgents/com.user.copland.plist
+---
+
+## Asana Task Source
+
+### Table Stakes
+
+| Behavior | Why Expected | Complexity |
+|----------|--------------|------------|
+| Pull tasks from a configured Asana project | Core feature — this is the alternative to GitHub Issues | Medium |
+| Filter tasks by assignee, section, or custom field | "copland-ready" equivalent of a GitHub label | Medium |
+| Task title and description passed to selector and planner | Same data shape as GitHub issues | Low (mapping layer) |
+| After PR opened: post comment on Asana task with PR URL | Closes the loop — user sees PR link in Asana | Medium |
+| Asana personal access token (PAT) in `~/.copland.yml` | Consistent with existing API key storage pattern | Trivial |
+| GitHub PRs still used for code changes | Asana is task source only; code workflow unchanged | Low |
+
+### Asana Task Lifecycle (selection → PR → comment)
+
+**Phase 1: Task Fetching**
+
+Asana REST API endpoint for listing tasks in a project:
+```
+GET https://app.asana.com/api/1.0/projects/{project_gid}/tasks
+```
+- Auth: `Authorization: Bearer {personal_access_token}`
+- Returns task `gid` (global ID), `name`, `notes` (description), `assignee`, `completed`
+- Requires `opt_fields` query param to get description: `?opt_fields=gid,name,notes,assignee,completed,tags`
+
+**Task filtering** (equivalent to GitHub label filtering):
+- Option A: Tag-based — Asana tasks tagged with a specific tag (e.g., "copland-ready") are candidates.
+  Fetch tag GID from config, filter tasks by that tag.
+- Option B: Section-based — Tasks in a specific section/column of the project are candidates.
+  `GET /sections/{section_gid}/tasks`
+- Option C: Custom field-based — More powerful but more complex. Avoid for v1.
+
+**Recommendation: tag-based filtering** (LOW complexity, analogous to GitHub label pattern, user-familiar).
+
+**Data mapping to existing pipeline:**
+```php
+// Asana task → issue-shaped array for selector/planner
+[
+    'number'  => (int) $task['gid'],   // treat GID as issue number
+    'title'   => $task['name'],
+    'body'    => $task['notes'] ?? '',
+    'labels'  => [],                   // no label equivalent needed — pre-filtered by tag
+    'html_url' => "https://app.asana.com/0/{project_gid}/{task_gid}",
+]
 ```
 
-**Unload:**
-```bash
-launchctl unload ~/Library/LaunchAgents/com.user.copland.plist
+**Phase 2: Selection and Planning**
+
+No changes needed. The selector and planner receive the mapped task array. The task GID substitutes for the
+GitHub issue number throughout the pipeline. The existing `SelectionResult`, `PlanResult`, and
+`RunOrchestratorService` flow continues unchanged.
+
+**Phase 3: Post-PR Comment on Asana Task**
+
+After the GitHub draft PR is created, post a comment (called a "story" in Asana) on the Asana task:
+
+```
+POST https://app.asana.com/api/1.0/tasks/{task_gid}/stories
+{
+  "data": {
+    "text": "Draft PR opened: https://github.com/owner/repo/pull/117\n\nCopland automated this change."
+  }
+}
 ```
 
-**Manual trigger for testing:**
-```bash
-launchctl start com.user.copland
+Auth: same Bearer token.
+
+This is a fire-and-forget call. If it fails, log the failure but do not abort the run — the PR was already
+opened, and the comment is a convenience, not a correctness requirement.
+
+**Phase 4: Task Status Update (optional differentiator)**
+
+Asana allows marking tasks with custom fields or moving them to a section. After PR is opened, optionally
+move the task to a "In Review" section or remove the "copland-ready" tag. This prevents the same task from
+being re-selected on the next run.
+
+**This is the Asana equivalent of the GitHub "add label / remove label" step in `RunOrchestratorService`.**
+It is table stakes for preventing duplicate runs, not a differentiator. It must be implemented.
+
+```
+DELETE https://app.asana.com/api/1.0/tasks/{task_gid}/removeTag
+{
+  "data": { "tag": "{copland_ready_tag_gid}" }
+}
+```
+— OR —
+```
+POST https://app.asana.com/api/1.0/tasks/{task_gid}/addProject
+{
+  "data": { "project": "{project_gid}", "section": "{in_review_section_gid}" }
+}
 ```
 
-### PATH Pitfall
+**Config surface in `~/.copland.yml`:**
+```yaml
+task_source: asana    # or: github (default)
 
-The `gh` CLI and PHP may not be in the system PATH under launchd. `EnvironmentVariables.PATH` must include:
+asana:
+  access_token: 1/...
+  workspace_gid: "12345678"
 
-- `/opt/homebrew/bin` — Apple Silicon (M1/M2/M3) Homebrew
-- `/usr/local/bin` — Intel Mac Homebrew + manually installed binaries
-- `/usr/bin:/bin` — system binaries
-
-If `gh` is missing from PATH, `GitHubService.token()` silently returns empty string or throws. This is a
-silent failure mode. Copland should validate that `gh` is accessible on startup.
-
-**Confidence:** HIGH — this is standard macOS launchd behavior, well-documented.
-
-### cron as Fallback
-
-If launchd is too unfamiliar, a cron entry with explicit PATH and HOME is a workable fallback:
-
-```cron
-0 2,4 * * * HOME=/Users/USERNAME PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin /usr/local/bin/php /usr/local/bin/copland run >> /Users/USERNAME/.copland/logs/nightly.log 2>&1
+# Per-repo mapping: which Asana project + tag maps to this GitHub repo
+repos:
+  - slug: owner/repo
+    path: /path/to/checkout
+    asana_project_gid: "98765432"
+    asana_ready_tag_gid: "11111111"      # tag meaning "ready for Copland"
+    asana_in_review_section_gid: "22222222"  # optional: move here after PR
 ```
 
-But this requires: manual log redirection, HOME set inline, and does not handle macOS sleep/wake correctly.
-launchd is the right answer.
+**Authentication:** Asana Personal Access Tokens (PATs) are available from Asana profile settings. They are
+the correct auth mechanism for a single-user personal tool. OAuth is over-engineering here. PATs do not
+expire unless manually revoked.
+
+**Confidence on API shape:** MEDIUM — Asana REST API v1 has been stable for years. The `tasks`, `stories`,
+and `tags` endpoints are core Asana API surface. `opt_fields` pattern for field selection is characteristic
+of Asana's API. Verify exact field names against Asana API reference before implementation.
+
+### Asana Task Lifecycle — Dependency on GitHub
+
+Asana is a task source, not a code host. The full lifecycle is:
+
+```
+Asana project (task candidates)
+    ↓  fetch + filter by tag
+Copland selector
+    ↓  selection result
+Copland planner
+    ↓  plan result
+Git worktree (existing GitHub repo)
+    ↓  execute + verify
+GitHub (draft PR)
+    ↓  PR URL
+Asana task (comment with PR link + remove ready tag)
+```
+
+GitHub is still required. The user must have a GitHub repo connected to their Asana project tasks — meaning
+the Asana task describes work that lives in the GitHub codebase. The `repos:` list in config gains a new
+`asana_project_gid` field to make this mapping explicit.
+
+### Anti-Features (avoid)
+
+| Anti-Feature | Why Avoid |
+|--------------|-----------|
+| Syncing Asana task status from GitHub PR state | Requires webhooks or polling. This is a personal CLI, not a service. Out of scope. |
+| Creating Asana tasks from GitHub issues | Wrong direction. Asana is task source, GitHub is code host. Don't blur the boundary. |
+| Asana OAuth flow | Over-engineering for single-user tool. PAT stored in `~/.copland.yml` is sufficient. |
+| Supporting Asana subtasks as work items | Subtask structure varies wildly across projects. Flat task list is predictable. |
+| Writing implementation steps back to Asana task description | The PR body already contains the plan. Duplication without benefit. |
+| Asana as the PR destination | GitHub issues + PRs are the audit trail. Asana is input only. |
 
 ---
 
 ## Feature Dependencies
 
 ```
-Multi-repo run → Persistent run log (without log file, multi-repo runs are invisible)
-Persistent run log → Timestamp format decision (must decide before writing log code)
-Cost-per-run → Persistent run log (cost data must be in the log, not just stdout)
-launchd setup → HOME env fix in GlobalConfig (otherwise launchd runs fail at config load)
-Prompt caching → Cache savings in cost display (cache field only exists after caching is wired)
+LLM provider abstraction → Ollama integration (Ollama IS the first alternative provider)
+LLM provider abstraction → OpenRouter integration (same interface, different adapter)
+Provider abstraction → Cost estimator extension (need $0.00 path for Ollama, new rates for OpenRouter models)
+Provider abstraction → Prompt caching bypass (do not pass cache_control blocks to non-Anthropic providers)
+Asana task source → GitHub PR creation (unchanged — Asana is input only)
+Asana task source → Label/tag mutation after PR (must implement to prevent re-selection)
+Asana task source → Task-source-agnostic pipeline (selector/planner receive normalized task array regardless of source)
 ```
 
 ---
 
-## MVP Recommendation for This Milestone
+## Complexity Summary
 
-Prioritize in this order:
-
-1. **HOME env var fix** — Prerequisite for cron/launchd to work at all. One-line fix.
-2. **Persistent run log** — Table stakes. Define the format, write to `~/.copland/logs/nightly.log` in
-   `RunCommand`. This is the primary deliverable for morning reviewability.
-3. **Cost line in run log** — Trivially added once the log file exists. Data is already computed.
-4. **Multi-repo sequential runner** — The `repos:` list in global config + fail-and-continue loop.
-5. **launchd plist** — Document in README. Optionally add `copland cron:install` command.
-
-Defer from this milestone:
-- Cache savings display (depends on prompt caching milestone)
-- Log rotation (add once log file has existed for a week and you can see actual size)
-- `copland cron:install` command (the plist is simple enough to copy-paste)
+| Feature Area | Estimated Complexity | Key Risk |
+|--------------|---------------------|----------|
+| LLM provider interface | Low | Response normalization surface (Anthropic vs OpenAI shape) |
+| Ollama adapter | Low–Medium | Tool calling quality varies by model |
+| OpenRouter adapter | Low | Nearly identical to Ollama adapter — same OpenAI compat layer |
+| Cost estimator for new providers | Low | New model rate table; Ollama = $0.00 |
+| Asana task fetching + filtering | Medium | opt_fields pagination, tag GID lookup |
+| Asana → issue shape mapping | Low | Trivial data mapping layer |
+| Asana post-PR comment | Low | Single POST after PR creation |
+| Asana tag removal (re-selection prevention) | Low | Same pattern as GitHub label removal |
+| Config schema changes | Low | Additive fields; backward compatible with Anthropic default |
 
 ---
 
 ## Sources
 
-- Codebase: `/Users/garykovar/projects/codeable/copland/` (HIGH confidence — direct inspection)
-- macOS launchd documentation: https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/ScheduledJobs.html (MEDIUM — training knowledge, verify plist key names against current macOS)
-- CONCERNS.md: Documents HOME env var bug and its trigger conditions (HIGH — codebase fact)
-- Anthropic cache token API fields: `cache_read_input_tokens`, `cache_creation_input_tokens` in usage response (MEDIUM — training knowledge as of mid-2024, verify in SDK changelog before implementing)
+- Codebase inspection: `AnthropicApiClient`, `ClaudeSelectorService`, `ClaudeExecutorService`, `GlobalConfig`,
+  `AnthropicCostEstimator`, `INTEGRATIONS.md` — HIGH confidence (direct inspection)
+- Ollama OpenAI-compatible API: training knowledge of Ollama v0.3+ documented behavior — MEDIUM confidence
+  (verify `http://localhost:11434/v1` base URL and `chat/completions` endpoint against current Ollama docs)
+- OpenRouter API: training knowledge of OpenRouter's published OpenAI-compatible API — MEDIUM confidence
+  (verify auth header name and model naming convention against openrouter.ai/docs)
+- Asana REST API v1: training knowledge of stable Asana API surface — MEDIUM confidence
+  (verify `opt_fields` task fields, stories POST body shape, tag/section mutation endpoints against
+  developers.asana.com before implementation)

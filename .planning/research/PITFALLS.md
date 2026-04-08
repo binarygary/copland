@@ -1,325 +1,411 @@
-# Domain Pitfalls: Autonomous Overnight Coding Agent
+# Pitfalls Research: Multi-Provider LLM + Asana
 
-**Domain:** Unattended LLM agentic loop running against live GitHub repos
-**Researched:** 2026-04-02
-**Overall confidence:** HIGH (grounded in codebase review + verified Anthropic API behavior)
-
----
-
-## Critical Pitfalls
-
-Mistakes that cause full-run loss, silent bad output, or cascading downstream failures.
+**Project:** Copland v1.1 — Adding Ollama, OpenRouter, and Asana to an existing overnight PHP CLI agent
+**Researched:** 2026-04-08
+**Overall confidence:** HIGH for structural pitfalls (grounded in codebase review); MEDIUM for Ollama/OpenRouter specifics (training knowledge, no live docs available during research); HIGH for Asana API behavior (stable, well-documented)
 
 ---
 
-### Pitfall 1: No Retry on Transient API Errors Destroys the Entire Run
+## LLM Provider Abstraction
 
-**What goes wrong:** A 429 rate-limit or 5xx server error from the Anthropic API at round 8 of 12 tears down the full run. Every token spent on selector and planner is wasted. The issue is left in its pre-run state (label intact, no PR, no comment). The next cron invocation picks the same issue, spends selector + planner tokens again, and has the same failure probability at the same point in execution.
+### Pitfall A1: The Abstraction Interface Will Leak Anthropic-Specific Concepts
 
-**Why it happens:** `$this->client->messages->create()` at line 90 of `ClaudeExecutorService.php` has zero error handling. PHP's Anthropic SDK throws on non-2xx responses. The executor loop has no try/catch around the API call itself — only tool dispatch errors are caught.
+**What goes wrong:** The current codebase has five Anthropic SDK-specific concepts baked directly into `ClaudeExecutorService`:
 
-**Consequences:**
-- Overnight runs silently "succeed" from cron's perspective (process exits 0 on logged failure) but produce nothing
-- Cost doubles on retry (selector + planner re-run)
-- Backlog never clears if the same issue always hits API instability at a predictable token depth
-- No indication in the morning that anything went wrong
+1. `CacheControlEphemeral::with()` — prompt caching control attached to `TextBlockParam` objects. There is no equivalent in OpenAI-compatible APIs (Ollama, OpenRouter). The system prompt is currently built as `array<TextBlockParam>`, not as a plain string.
+2. `$response->usage->cacheCreationInputTokens` and `$response->usage->cacheReadInputTokens` — Anthropic-specific token fields. Other providers return `prompt_tokens` / `completion_tokens` (OpenAI schema) or nothing at all.
+3. `AnthropicMessageSerializer::assistantContent()` serializes `thinking`, `redacted_thinking`, and `citations` block types. These are Anthropic-specific and do not exist in OpenAI-compatible response schemas.
+4. `stopReason === 'end_turn'` — Anthropic calls it `end_turn`. OpenAI-compatible providers use `stop` as the finish reason. If the abstraction passes through the raw finish reason and the executor loop checks `=== 'end_turn'`, Ollama and OpenRouter runs will never terminate normally — the loop will exhaust `maxRounds` and return `success: false` every time.
+5. The `tools` parameter format uses `input_schema` as the key (`buildTools()` at line 403 of `ClaudeExecutorService.php`). The OpenAI function-calling format uses `parameters`. Sending Anthropic-format tool definitions to an OpenAI-compatible endpoint causes a 400 or silent tool-call failure.
 
-**Warning signs:**
-- Runs completing in under 10 seconds (selector/planner succeed, executor fails immediately)
-- Run log shows steps 1-3 OK and then a generic exception message
-- Cost reports showing only selector + planner usage, zero executor usage
+**Why it happens:** `AnthropicApiClient` wraps the Anthropic PHP SDK directly. The SDK's response objects are PHP class instances with named properties specific to Anthropic's schema. The executor is written against those property names directly.
+
+**Consequences:** A naive "just switch the client" abstraction will produce a provider that returns results but silently fails: the executor loop never exits, tools are not called, and cost tracking reports zero for cache fields.
 
 **Prevention:**
-- Wrap `$this->client->messages->create()` in exponential backoff: catch HTTP 429 and 5xx, sleep 1s/2s/4s, retry up to 3 times
-- Distinguish retryable errors (rate limit, server error, timeout) from non-retryable (400 invalid request, 401 auth)
-- Log each retry attempt so the morning review shows the transient was handled, not hidden
-
-**Phase to address:** Reliability hardening (first improvement phase)
+- Define a `LlmResponse` value object internal to Copland that normalises the response before the executor sees it. Fields: `content` (array of typed blocks), `stopReason` (normalised to `end_turn` | `tool_use` | `error`), `usage` (a `ModelUsage` object with zeros for unsupported fields).
+- The provider adapter's job is to translate provider-specific responses into this `LlmResponse`. The executor never touches the raw SDK response.
+- The tool definition builder must also be provider-aware. Anthropic format (`input_schema`) and OpenAI format (`parameters`) differ in key name. The adapter layer translates outbound tool definitions.
+- Confidence: HIGH (these property differences are stable API contracts).
 
 ---
 
-### Pitfall 2: Unbounded Context Growth Causes Exponential Token Cost and Silent Truncation
+### Pitfall A2: AnthropicCostEstimator is Hardcoded to Anthropic Model Name Substrings
 
-**What goes wrong:** The `$messages` array in `executeWithPolicy()` grows by two entries every round (assistant turn + tool results). Any large tool output — a 500-line file, verbose test output, a stack trace — is appended in full and retransmitted on every subsequent round. A 10KB file read in round 2 is sent to the API 11 times if the executor runs 12 rounds. This is not a hypothetical: the existing `CONCERNS.md` documents exactly this pattern.
+**What goes wrong:** `AnthropicCostEstimator::ratesForModel()` does substring matching on the model name (`haiku`, `sonnet`, `opus`). OpenRouter model names look like `anthropic/claude-3-haiku`, `meta-llama/llama-3-70b-instruct`, `mistralai/mixtral-8x7b`. Ollama model names look like `llama3.2`, `qwen2.5-coder:7b`, `mistral:latest`.
 
-The second failure mode is context window overflow. Claude Sonnet's context limit is 200K tokens. A 12-round executor on a file-heavy issue can plausibly accumulate:
-- System prompt: ~800 tokens
-- Plan contract: ~500 tokens
-- 10 read_file results averaging 3KB each: ~37K tokens, each retransmitted N times
-- Tool call overhead per round: ~200 tokens
+None of these match the existing substrings, so `ratesForModel()` falls through to the default `[3.0, 15.0]` Sonnet rate. Ollama runs — which are free — will be reported as costing $3/1M tokens. OpenRouter runs using Llama or Mistral models (which cost a fraction of Sonnet) will be massively over-reported.
 
-At round 12, the total input can exceed 50-100K tokens. If it hits the context limit, the API returns a 400 error with `context_length_exceeded`. This is not retried by backoff logic (it is a 400, not a 5xx) and terminates the run.
-
-**Why it happens:** Lines 63 and 192 of `ClaudeExecutorService.php` append to `$messages` with no windowing or size check. PHP arrays have no upper bound. The code was designed for short runs and has not been stress-tested on large files.
-
-**Consequences:**
-- Token cost scales as O(n²) with round count: round 12 pays for everything from round 1 through 12
-- Runs on repos with large files cost 5-10x more than equivalent runs on small files
-- Context overflow is a non-retryable 400 that terminates the run after substantial token spend
-- Caching has zero effect on dynamically-growing message content; the cached system prompt is a minor savings
-
-**Warning signs:**
-- Cost per run increasing over time as you add larger repos to the cron schedule
-- Runs against repos with large source files (>500 lines) failing late in execution
-- `inputTokens` growing non-linearly across rounds (visible if per-round token counts are logged)
+For an overnight agent, cost reporting is how the operator detects runaway behavior. Incorrect cost reporting hides real cost anomalies.
 
 **Prevention:**
-- Cap `read_file` output at 300 lines with a truncation notice appended (already identified in CONCERNS.md — implement it)
-- Track total input tokens after each round and abort gracefully if approaching 150K (reserve headroom)
-- Implement a sliding window: keep the initial contract message + last N exchanges + tool call log summary for older rounds
-- For `run_command`, cap output at 200 lines — test runners produce thousands of lines that serve no purpose in the loop
-
-**Phase to address:** Context and cost hardening (first improvement phase)
+- Extend the cost model to accept per-provider rate overrides via config. The `~/.copland.yml` global config already loads model names — add an optional `cost_per_million_input` / `cost_per_million_output` field per model entry.
+- For Ollama, default to zero cost. For OpenRouter, the API response includes `usage.cost` in USD directly — use it instead of estimating.
+- Rename `AnthropicCostEstimator` to `ModelCostEstimator` at the abstraction boundary.
+- Confidence: HIGH (code is directly readable; OpenRouter does return cost in response).
 
 ---
 
-### Pitfall 3: Fragile Guardrail Heuristic Provides False Security
+### Pitfall A3: Prompt Caching Must Be Silently Disabled for Non-Anthropic Providers
 
-**What goes wrong:** The guardrail check at lines 300-303 of `ClaudeExecutorService.php` uses `str_contains(strtolower($guardrail), 'block')` to decide whether a guardrail applies. This is a heuristic on free-form text, not a policy rule. It has two failure modes:
+**What goes wrong:** `executeWithPolicy()` builds the system prompt as a `TextBlockParam` with `CacheControlEphemeral::with()` attached (lines 52-57 of `ClaudeExecutorService.php`). This is Anthropic SDK object construction. Passing this to an OpenAI-compatible endpoint either throws a type error in PHP or sends malformed JSON.
 
-1. **False positive (over-blocking):** A guardrail like `"Do not unblock the payment processing feature"` contains the substring `block`. Any write to any file will be refused because `$guardrail` contains the path to the file being written... actually no, but any path that also appears in the guardrail text string causes a match. The current check is `str_contains($guardrail, $normalizedPath)` — so if the path `src/Payments/Handler.php` is mentioned in a guardrail for unrelated reasons, writes to it are blocked.
-
-2. **False negative (under-blocking):** A guardrail like `"Prevent modification of the configuration directory"` or `"Ensure config/ files are not altered"` does not contain the word `block`. It silently passes. The executor can write to `config/` without restriction.
-
-**Why it happens:** Guardrails were implemented as free-form planner output before the structured path allow/block system was fully thought through.
-
-**Consequences:**
-- Executor writes to files that should be protected (false negative) — silent data loss or repo corruption
-- Executor is blocked from writing to legitimate files (false positive) — wastes rounds retrying, hits thrashing abort
-- In both cases, the run produces wrong output with no alerting
-
-**Warning signs:**
-- Executor log showing repeated `Policy violation: Write to '...' blocked by guardrail` on expected files
-- Executor completing but `git diff` showing changes to files the planner said to leave alone
-- Planner guardrails containing natural language that describes protection without the word "block"
+If the abstraction strips it to a plain string for non-Anthropic providers, caching is silently lost. That is fine functionally but breaks cost tracking (the cache token fields will always be zero, which is correct for providers that do not cache).
 
 **Prevention:**
-- Replace free-form guardrail text with a structured `blocked_write_paths` array in plan JSON
-- The planner should output `"blocked_write_paths": ["config/", "database/migrations/"]` — concrete, machine-readable
-- The executor validates writes against this list with prefix matching, not substring heuristic
-- Keep the existing `guardrails` text array for display in PR body / run log, but do not parse it for enforcement
-
-**Phase to address:** Reliability hardening (first improvement phase)
+- The system prompt builder must be provider-aware. Anthropic path: `TextBlockParam` with `CacheControlEphemeral`. OpenAI path: plain string.
+- This is a one-if-block decision in the provider adapter, not a complex concern — but it must be deliberate, not forgotten.
+- Document in config which providers support caching so users understand why cache tokens show zero for Ollama/OpenRouter runs.
+- Confidence: HIGH.
 
 ---
 
-### Pitfall 4: Executor Success Does Not Mean Correct Output
+### Pitfall A4: Retry Logic is Coupled to Anthropic Error Types
 
-**What goes wrong:** `ExecutionResult->success = true` is set when `stopReason === 'end_turn'` (lines 121-136 of `ClaudeExecutorService.php`). The model decided it was done. But "end_turn" means the model has nothing more to say — it does not mean the implementation is correct, complete, or even compilable.
+**What goes wrong:** `AnthropicApiClient::isRetryable()` checks HTTP status codes (429, 5xx). This logic works for any HTTP-based provider. However, `extractStatusCode()` uses `method_exists($e, 'getResponse')` — it is designed around Guzzle's `BadResponseException` shape, which is what the Anthropic SDK throws.
 
-Specific failure modes that return `success: true`:
-- Executor writes syntactically invalid PHP that fails at runtime but passes no test suite
-- Executor implements a partial solution (changes 1 of 3 required files), summarizes confidently, and calls `end_turn`
-- Executor encounters a tool error in round 11, recovers by writing a placeholder, and summarizes the placeholder as the implementation
-- Executor writes code that changes the right file but introduces a regression in an adjacent function
-
-The `VerificationService` catches file count and line count violations, but does not run tests, does not parse diffs, and does not validate that the executor's claimed changes match the plan's success criteria.
-
-**Why it happens:** Verification is structurally thin (lines 26-47 of `VerificationService.php`). It checks git metadata, not code quality. The executor's `summary` is free-form text that feeds directly into the PR body.
-
-**Consequences:**
-- Draft PRs are opened for non-functional implementations
-- The human reviewer (future you) sees a confident PR description written by the model, assumes it works, and merges
-- Regressions get merged into main from draft PRs that were not carefully reviewed
-
-**Warning signs:**
-- PR descriptions that say "implemented X" but the diff shows trivial or partial changes
-- Executor completing in 3-4 rounds on tasks the planner estimated as multi-file, multi-step
-- Test commands listed in the plan are never called in the tool call log
+If the Ollama adapter or OpenRouter adapter throws different exception types (generic `RuntimeException`, Guzzle exceptions with different structures, or SDK-specific exceptions), `extractStatusCode()` returns `'network_error'` for all of them — which happens to be retryable. Every error from Ollama (including "model not loaded", "out of memory") will be retried three times.
 
 **Prevention:**
-- Require the executor to run its own test commands as part of the plan's `commands_to_run`; fail if exit code is non-zero
-- Verify the executor's `toolCallLog` contains at least one `run_command` for each command in `plan->commandsToRun`
-- Add a structured executor output: require JSON with list of changed files and short rationale before `end_turn`
-- Consider running `php artisan test` unconditionally after execution and treating non-zero exit as verification failure
-
-**Phase to address:** Verification hardening (second improvement phase)
+- Standardise the exception contract at the provider adapter boundary: adapters must throw `ProviderException` with HTTP status code attached, or a `ProviderNetworkException` for connection-level failures.
+- The retry logic in `AnthropicApiClient` (to be renamed `LlmApiClient`) then operates on a clean exception hierarchy, not on structural duck-typing.
+- Confidence: HIGH (code is directly readable).
 
 ---
 
-### Pitfall 5: No Run Audit Trail Makes Overnight Failures Invisible
+## Ollama
 
-**What goes wrong:** The `$log` array in `RunOrchestratorService` is an in-memory string array. It is output to the CLI during an interactive run via `progressCallback`. In a cron run, there is no interactive terminal. Unless cron is configured to capture stdout to a file (not guaranteed), the log is lost when the process exits.
+### Pitfall B1: Most Ollama Models Do Not Support Tool Use
 
-The morning review of overnight work consists of: look at open PRs. If there are no PRs, something went wrong, but there is no record of what or why. The run log, tool call log, selector decision, planner plan, and executor summary are all gone.
+**What goes wrong:** The executor's entire loop depends on tool use (function calling). The executor sends five tool definitions to the LLM and then processes `tool_use` blocks in the response. If the model does not support tool use, it will either:
 
-**Why it happens:** The system has no structured log writer. GitHub issues get a comment on success or failure (steps 204 and 158 in `RunOrchestratorService.php`), which provides minimal signal. But the full execution trace — which issue was considered, why the planner declined, what tools were called, which files were written — is not persisted anywhere.
+1. Ignore the tools entirely and return a text response describing what it would do ("I would call read_file to...") — the executor sees no `tool_use` blocks, finds `stopReason === end_turn` (or equivalent), and returns `success: true` with an empty summary of "here is my plan".
+2. Return malformed JSON attempting to imitate a tool call inside a text block — the executor sees a text block, finds no tool calls, and terminates.
+3. Throw a 400 error from Ollama because the `/api/chat` endpoint received a `tools` array with a model that does not declare tool support.
 
-**Consequences:**
-- Debugging overnight failures requires re-running the same issue interactively and hoping to reproduce
-- Silent `skip_all` decisions (selector found nothing suitable) look identical to process crashes
-- Cost tracking is impossible without per-run records
-- Patterns in failures (same repo always fails in round 8, same issue type always gets declined) are invisible
+As of mid-2025, Ollama's tool support is limited to models that explicitly declare it. Models that support tools in Ollama: `llama3.1`, `llama3.2`, `qwen2.5-coder`, `mistral-nemo`, `command-r`. Models that do NOT support tools: most base models, `codellama`, older `llama2`, `phi3` (partial), `gemma` family (partial). A user who configures `ollama_model: codellama:7b` will get silent executor failure every time.
 
-**Warning signs:**
-- You cannot answer "what did Copland do last night?" without examining GitHub issues manually
-- An issue has been labeled `agent-ready` for a week but no PR ever appears and no failure comment exists
-- Cron reports exit 0 but no PRs were opened
+**Consequences:** Overnight runs with unsupported models produce `success: true` with an empty diff, then open a PR with a nonsense description. This is worse than a clear failure.
 
 **Prevention:**
-- Write a structured JSON run log to `~/.copland/runs/{repo}/{date}-{issue}.json` at run end (both success and failure)
-- Include: run timestamp, selected issue, selector decision + reason, planner decision + reason, tool call log, verification result, final status, token counts
-- On `skip_all`, write a log entry with the list of considered issues and skip reasons — not just silence
-- The GitHub issue comment on failure (already present) is a good fallback signal; keep it
-
-**Phase to address:** Observability (first or second improvement phase)
+- Maintain a whitelist of Ollama models known to support tool use. Warn at startup (before the run) if the configured Ollama model is not on the list.
+- On executor startup, if provider is Ollama, send a minimal tool-use probe: one tool definition, one message, check that the response contains a `tool_use` / `tool_calls` block. If not, abort with a clear error before spending any tokens on selector/planner.
+- The `copland doctor` command (already suggested in v1.0 PITFALLS) should include a provider capability check.
+- Confidence: MEDIUM (Ollama tool support list based on training knowledge as of mid-2025; may have expanded).
 
 ---
 
-## Moderate Pitfalls
+### Pitfall B2: Ollama May Not Be Running When the Overnight Job Fires
 
-Mistakes that waste money, create maintenance burden, or degrade reliability over time.
+**What goes wrong:** Ollama is a local HTTP server (`localhost:11434`). It runs as a user application, not a system daemon. On macOS, Ollama starts when the user opens it and may stop when the system sleeps aggressively or the user quits the app. A cron job that fires at 2am on a MacBook that sleeps at midnight will find Ollama unavailable.
 
----
+There is no equivalent concern for Anthropic (cloud API, always available) or OpenRouter (cloud API, always available). Ollama is uniquely fragile for overnight use.
 
-### Pitfall 6: HOME Environment Variable Not Set in Cron Breaks Config Loading
+Additionally, when Ollama is running but the requested model has not been pulled, the API returns a 404 or error response. This is different from "Ollama is down" and requires different handling.
 
-**What goes wrong:** `$_SERVER['HOME']` is not reliably set in cron/launchd environments on macOS. When the cron job runs, the HOME environment may not be inherited from the user shell profile. `PlanArtifactStore.php` and `GlobalConfig.php` both depend on `$_SERVER['HOME']` to locate `~/.copland/`. If it is missing, the entire run fails before reaching the API — and because there is no persistent log yet (see Pitfall 5), this failure is invisible.
-
-**Warning signs:** Cron job exits non-zero; no output captured; issues stay in `agent-ready` state indefinitely.
-
-**Prevention:** Replace `$_SERVER['HOME'] ?? null` with `getenv('HOME') ?: (posix_getpwuid(posix_geteuid())['dir'] ?? null)`. Use `posix_getpwuid` as the ultimate fallback — it works without any environment variable. Add an explicit startup check that verifies HOME resolution and prints a diagnostic if it fails.
-
-**Phase to address:** Reliability hardening (first improvement phase)
-
----
-
-### Pitfall 7: Orphaned Git Worktrees Accumulate on Repeated Failure
-
-**What goes wrong:** The `finally` block in `RunOrchestratorService.php` (lines 224-232) catches workspace cleanup failures silently. If cleanup fails — because the worktree is locked, because git is in a detached state, or because a long-running test command left a subprocess holding a file handle — the worktree remains on disk. Each subsequent cron run creates a new worktree. After a week of failures (common during initial setup or API instability), you may have dozens of orphaned branches and worktrees.
-
-**Warning signs:** `git worktree list` shows multiple stale entries; disk usage grows; `git branch` shows many `agent/...` branches that have no corresponding PRs.
+**Consequences:** The entire overnight run fails at the first API call. No PR, no log, no signal. The issue stays labeled `agent-ready` forever.
 
 **Prevention:**
-- On startup, check for worktrees older than 24 hours and log a warning
-- Add a `copland:cleanup` command that prunes all agent worktrees with no corresponding open PR
-- For the currently failing cleanup, add more specific error logging so the exact failure mode is visible
-
-**Phase to address:** Reliability hardening (first improvement phase)
+- On startup (before selector), check Ollama reachability: `GET http://localhost:11434/api/tags`. Timeout after 2 seconds. If unreachable, log and exit with a clear message.
+- Check that the configured model appears in the tags response. If not, log "model not pulled: run `ollama pull <model>`" and exit.
+- For overnight use, instruct users to install Ollama as a persistent background service (`ollama serve` via launchd). Document this in the setup guide.
+- Consider making Ollama an "interactive use only" provider and documenting that it is not recommended for unattended overnight runs unless the user configures it as a persistent service.
+- Confidence: HIGH (macOS application lifecycle behavior is well-understood).
 
 ---
 
-### Pitfall 8: Thrashing Detection Has No Escape for Genuine Complexity
+### Pitfall B3: Local Model Context Windows Are Smaller and Variable
 
-**What goes wrong:** `ExecutorRunState::shouldAbortForThrashing()` aborts if there is no write or command by round 5. This protects against lazy executors but incorrectly terminates runs where the first 4 rounds are legitimately reading context (multi-file understanding, exploration of an unfamiliar codebase structure). Complex issues that require reading 4-6 files before writing will always hit this threshold.
+**What goes wrong:** The executor loop grows `$messages` with every round. With Anthropic Claude Sonnet, the context window is 200K tokens — generous enough that most runs never approach the limit. Common Ollama models have much smaller context windows:
 
-A separate threshold — aborting at 6 `list_directory` calls — is equally blunt. An executor on an unfamiliar repository structure may need to explore 6+ directories to locate the right files for a multi-module change.
+- `llama3.2:3b` — 128K context, but effective quality degrades long before that
+- `qwen2.5-coder:7b` — 32K default context (configurable, but default matters for users who do not read docs)
+- `mistral:7b` — 32K context
+- `codellama:7b` — 16K context
 
-**Warning signs:** Executor abort reason is "no implementation progress after 5 rounds" but the tool call log shows legitimate reads; run fails on tasks the planner rated as `3 files, medium complexity`.
+The executor reads files, appends them to messages, and retransmits everything each round. A run that comfortably fits in Anthropic's context window will overflow a 32K context window in 3-4 rounds on a medium-complexity task.
+
+Ollama does not return a `context_length_exceeded` error in the same predictable way as Anthropic. Depending on the model runner, it may silently truncate the input (the model hallucinates about the missing context) or return a 400.
 
 **Prevention:**
-- Make thresholds configurable per repo or per plan in `ExecutorPolicy`; expose them in `.copland.yml`
-- Alternatively, make the "no progress" threshold relative to the plan's `files_to_read` count: if plan says read 4 files, allow 4+2 rounds before expecting a write
-- The 6-call directory exploration limit should only trigger if no planned reads have been completed yet
-
-**Phase to address:** Reliability hardening or executor behavior tuning
+- Surface the provider's context limit in the adapter interface. The executor should track running token count and abort gracefully if approaching 80% of the provider's limit.
+- For Ollama providers, default `max_executor_rounds` to 6 (down from 12) and `read_file_max_lines` to 150 (down from 300) in the provider adapter defaults.
+- Allow users to override these per-provider in `~/.copland.yml`.
+- Confidence: MEDIUM (context window sizes based on training knowledge; Ollama allows `num_ctx` override that changes defaults).
 
 ---
 
-### Pitfall 9: Command Allowlist Exact Match Creates Retry Loops
+### Pitfall B4: Ollama Response Format Differs From Anthropic Format
 
-**What goes wrong:** `ExecutorPolicy::assertCommandAllowed()` uses strict string equality (after trim). If the planner generates `php artisan test` in `commands_to_run` but the executor calls `php artisan test --filter NewFeatureTest` to run the specific new test, the policy throws `PolicyViolationException`. The executor receives the error, attempts to figure out the right command string, and retries — potentially several times, burning rounds and tokens.
+**What goes wrong:** Ollama's `/api/chat` endpoint returns OpenAI-compatible JSON, not Anthropic-format JSON. Key differences:
 
-This is especially acute for commands where the executor legitimately needs arguments the planner did not anticipate: `composer install --no-dev`, `npm run build -- --watch=false`, etc.
+- Tool calls appear as `message.tool_calls[].function.name` and `message.tool_calls[].function.arguments` (a JSON string, not an object). Anthropic returns `block.type === 'tool_use'` with `block.id`, `block.name`, `block.input` (an object).
+- The `tool_use_id` for tool results (sent back by the client) is `tool_call_id` in OpenAI format vs `tool_use_id` in Anthropic format.
+- There is no `id` on individual tool calls in some Ollama model implementations — the field may be absent or a numeric index.
+- Usage statistics are `usage.prompt_tokens` / `usage.completion_tokens`, not `usage.inputTokens` / `usage.outputTokens`.
+- Finish reason is `finish_reason: "tool_calls"` (not `stop_reason: "tool_use"`) and `finish_reason: "stop"` (not `stop_reason: "end_turn"`).
 
-**Warning signs:** Tool call log shows repeated `run_command` calls with slight command variations, all returning policy violations; executor burns 3-4 rounds on command validation failures.
+The `AnthropicMessageSerializer` which serializes assistant content back into the next message's turn will break entirely when processing OpenAI-format responses, since it checks `$block->type === 'tool_use'` and the block structure does not exist.
 
 **Prevention:**
-- Implement prefix matching: validate that a command starts with one of the allowed prefixes (e.g., `php artisan`, `npm`, `composer`)
-- Use the plan's `commands_to_run` list as a starting set but allow argument extension on allowed prefixes
-- Document this behavior in the executor system prompt so the model understands it can extend with arguments
-
-**Phase to address:** Reliability hardening (first improvement phase)
+- The provider adapter must translate the Ollama/OpenAI response to the internal `LlmResponse` value object before returning it to the executor. This is the core value of the abstraction layer.
+- The message serializer (building the next round's message array) must also be provider-aware: Anthropic and OpenAI formats have different shapes for `tool_result` messages.
+- Confidence: HIGH (OpenAI vs Anthropic API schema differences are stable and well-documented).
 
 ---
 
-### Pitfall 10: API Response Structure Assumed, Not Validated
+## OpenRouter
 
-**What goes wrong:** `ClaudeSelectorService.php` and `ClaudePlannerService.php` both access `$response->content[0]->text` with a null-coalescing fallback to empty string. If the API returns a `tool_use` block as the first content item (which is valid in some response patterns), `->text` does not exist and the null-coalesce returns `''`. `extractJson('')` then throws a generic JSON parse error. The root cause — wrong block type in response — is invisible in the error message.
+### Pitfall C1: Model Naming Convention Includes Provider Prefix — Config Will Be Confusing
 
-More broadly, if Anthropic updates the SDK response structure (e.g., content array ordering changes), silent failures propagate without useful diagnostics.
+**What goes wrong:** OpenRouter model names are formatted as `{provider}/{model-name}` — for example `anthropic/claude-3-haiku-20240307`, `meta-llama/llama-3.1-70b-instruct`, `mistralai/mixtral-8x7b-instruct`. These differ from both Anthropic model IDs (`claude-haiku-4-5`) and Ollama model IDs (`llama3.1:70b`).
 
-**Warning signs:** Selector or planner throwing "JSON parse error" with no indication of what was being parsed; logs showing empty JSON extraction attempts.
+The existing `AnthropicCostEstimator::ratesForModel()` does substring matching on model names. OpenRouter model names will not match any existing substring (e.g., `meta-llama/llama-3.1-70b-instruct` does not contain `haiku`, `sonnet`, or `opus`).
+
+Separately, OpenRouter allows routing the same request to a specific provider or to the cheapest available provider for a model. The model name format for "cheapest provider" routing is just the model name; for a specific provider it is `{provider}/{model}`. Users who configure `openrouter_model: gpt-4o` will get a different model than users who configure `openrouter_model: openai/gpt-4o`.
 
 **Prevention:**
-- Check `$response->content[0]->type === 'text'` before accessing `->text`
-- Throw with context: "Expected text block in position 0, got {type}; full response: {json}"
-- Add a test case for each service with a mocked response returning a `tool_use` block in position 0
-
-**Phase to address:** Reliability hardening (first improvement phase)
-
----
-
-## Minor Pitfalls
-
-Operational irritants that compound over time.
+- Document the exact OpenRouter model name format in the config reference and in error messages.
+- Add a config validation step: if the provider is OpenRouter and the model name does not contain a `/`, warn that this uses OpenRouter's "auto-route to cheapest provider" behavior and may produce inconsistent results.
+- For cost tracking, use the `usage.cost` field in OpenRouter responses (OpenRouter returns actual USD cost per request) rather than estimating from token counts.
+- Confidence: HIGH (OpenRouter API schema is stable and the `usage.cost` field is documented).
 
 ---
 
-### Pitfall 11: GitHub Issue Pagination Caps Consideration Set at 50
+### Pitfall C2: OpenRouter Rate Limits Differ Per Underlying Model
 
-**What goes wrong:** `GitHubService::getIssues()` fetches exactly one page of 50 issues. Repos with more than 50 open `agent-ready` issues silently have the overflow ignored. The selector never sees them. If the first 50 issues are all blocked or unsuitable, the run skips even though suitable issues exist on page 2.
+**What goes wrong:** OpenRouter aggregates many providers, each with their own rate limits. The rate limit a request hits is not OpenRouter's rate limit — it is the underlying provider's rate limit, and it varies by model. A request to `anthropic/claude-3-haiku` via OpenRouter hits Anthropic's rate limits. A request to `mistralai/mixtral-8x7b-instruct` hits Mistral's rate limits. These are different values and change without notice.
 
-**Warning signs:** Selector consistently returns `skip_all` even after labeling new issues; issue count in the labeled set is exactly 50.
+OpenRouter returns a 429 when a rate limit is hit, but the `x-ratelimit-*` headers in the response reflect the underlying provider's limits, not OpenRouter's. The retry delay embedded in `Retry-After` may be very long (Anthropic rate limits on free tiers can be 1-minute waits).
 
-**Prevention:** Add a comment documenting the 50-issue cap as a known limitation; implement link-header pagination if any repo approaches this volume.
-
-**Phase to address:** Low priority; document the limitation first, implement pagination if needed.
-
----
-
-### Pitfall 12: `replaceOnce()` Causes Retry Loops on Duplicate Code Patterns
-
-**What goes wrong:** `FileMutationHelper::replaceOnce()` throws a `PolicyViolationException` if the `old` string appears more than once in the file. This is common in PHP: identical method signatures, repeated patterns in tests, duplicated config blocks. The executor receives the error, tries to provide a more specific string, reads the file again to understand context, burns 2-3 rounds, and may still fail if the pattern is genuinely repeated.
-
-**Warning signs:** Executor log showing `replace_in_file` failures with "multiple matches" followed by additional `read_file` calls for the same file; late-round abort for "no progress".
+The existing retry logic retries up to 3 times with exponential backoff capped at 4 seconds (`1 * 2^2 = 4s`). A rate limit with a 60-second `Retry-After` will exhaust all 3 retries in 7 seconds and then fail the run.
 
 **Prevention:**
-- Add a `first_match` strategy option to `replaceOnce()` for cases where replacing the first occurrence is semantically correct
-- Improve the error message to include the line numbers of all matches, giving the executor enough context to provide a longer, unique string
-- Consider always using `write_file` for full rewrites when `replaceOnce()` fails twice on the same file
-
-**Phase to address:** Executor behavior tuning
+- Parse the `Retry-After` header from 429 responses and sleep for that duration before retrying (capped at a configurable maximum, e.g., 120 seconds for overnight runs where wall-clock time is unimportant).
+- For overnight runs, a 60-second retry wait is acceptable — surface this as a log line so the morning review shows "waited 60s for rate limit" rather than appearing as a failure.
+- Confidence: HIGH (HTTP `Retry-After` header behavior is a standard RFC).
 
 ---
 
-### Pitfall 13: Draft PR Body Contains Raw Executor Summary
+### Pitfall C3: OpenRouter May Return Degraded Tool-Use Support for Some Models
 
-**What goes wrong:** `executionResult->summary` (free-form text produced by the model at `end_turn`) is pasted directly into the GitHub PR body (line 207 of `RunOrchestratorService.php`). The model frequently produces summaries that:
-- Claim the implementation is "fully complete" when it is a partial fix
-- Reference files or line numbers that do not match the actual diff
-- Include disclaimers or caveats that read as uncertain ("this should work, but may need adjustment")
-- Are excessively verbose (multi-paragraph wall of text)
+**What goes wrong:** OpenRouter routes requests to underlying providers and normalises request/response formats. Tool use support depends on whether the underlying model supports it. Some models available on OpenRouter support tool use natively; others do not, and OpenRouter may attempt to emulate tool use via prompt injection — which produces text that looks like a tool call but is not a structured response.
 
-**Warning signs:** PRs with PR bodies that contradict the actual diff; PRs with internal contradictions in the description.
+OpenRouter has a model metadata API (`GET /api/v1/models`) that includes a `tools` capability flag per model. A model without the `tools` flag will not reliably call tools, even if you include a `tools` array in the request.
+
+The failure mode is the same as Ollama B1: the executor sees no `tool_use` blocks, reaches `end_turn` / `stop`, and returns `success: true` with an empty diff.
 
 **Prevention:**
-- Require the executor to output a structured JSON summary before `end_turn` with fields: `changed_files`, `approach`, `test_status`, `caveats`
-- Render this structured output as a formatted PR body, not raw text
-- Include the tool call count and duration in the PR description as signal of execution complexity
-
-**Phase to address:** Output quality / observability
+- On provider startup, if using OpenRouter, call `/api/v1/models` and check the `tools` capability flag for the configured model. If `tools: false`, abort with a clear message.
+- Alternatively, maintain a list of OpenRouter-recommended models known to support structured tool use: Claude models via OpenRouter, GPT-4o, Llama 3.1 70B/405B.
+- Confidence: MEDIUM (OpenRouter model capability API behavior based on training knowledge; verify with OpenRouter docs during implementation).
 
 ---
 
-## Phase-Specific Warnings
+### Pitfall C4: OpenRouter Authentication Uses `Bearer` Token but Model-Level Auth Varies
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Add API retry/backoff | Backoff logic must distinguish 400 (client error, do not retry) from 429/5xx (transient, retry) | Check HTTP status code before retrying; log the error type |
-| Add structured run logging | JSON log written at end-of-run will miss mid-run crashes; use append-on-each-round if durability matters | Flush log entry after each round, not at run end |
-| Add prompt caching | Caching only applies to the static system prompt; message history is not cacheable and still grows O(n²) | Implement context windowing alongside caching; one without the other is incomplete |
-| Add file read size cap | Cap must be applied before appending to messages, not as a display filter after the fact | Apply truncation in `readFile()` itself, not in the progress formatter |
-| Add test coverage for executor | Mocked API responses must simulate multi-round sequences, not just single-turn; end_turn response must be included | Build a factory for mock response sequences: tool_use → tool_result → tool_use → end_turn |
-| Add multi-repo support | Running multiple repos in sequence means one repo's failure must not prevent subsequent repos from running | Each repo run must be wrapped in its own try/catch; failure should be logged and next repo should start |
-| Fix cron HOME resolution | Test in a minimal cron environment (not in a shell session) before shipping the fix | Add an explicit diagnostic command: `copland doctor` that prints resolved config path, HOME, and gh auth status |
+**What goes wrong:** OpenRouter authentication uses `Authorization: Bearer {OPENROUTER_API_KEY}` — the same HTTP pattern as Anthropic and OpenAI. However, OpenRouter also requires `HTTP-Referer` and `X-Title` headers to identify the application. Requests without these headers may be deprioritized or rejected by some underlying providers.
+
+Separately, some OpenRouter models require the user to have an account with the underlying provider and have their own credits there (e.g., certain Cohere or AWS Bedrock models). Attempting to use these models without those credentials returns a 402 or 403.
+
+**Prevention:**
+- Always include `HTTP-Referer: copland-agent` and `X-Title: Copland` headers in OpenRouter requests.
+- Document in the config reference that not all OpenRouter models are available to all users.
+- Treat 402 and 403 responses as non-retryable (do not retry on auth/billing errors).
+- Confidence: MEDIUM (OpenRouter header requirements are documented; specific model restrictions vary).
+
+---
+
+## Asana Integration
+
+### Pitfall D1: Asana PAT Scopes Are Not Granular — Over-Permissioning Is the Default
+
+**What goes wrong:** Asana Personal Access Tokens (PATs) are not scoped. A PAT has full access to everything the user account can access: all workspaces, all projects, all tasks. There is no way to create a PAT restricted to read-only task access on a single project.
+
+For Copland's use case (read tasks, add a comment on completion), the minimal required operations are:
+- `GET /projects/{id}/tasks` — list tasks
+- `GET /tasks/{id}` — read task details
+- `POST /tasks/{id}/stories` — add a comment
+
+The PAT stored in `~/.copland.yml` grants write access to every task, project, and workspace the user owns. A bug in Copland's Asana integration could modify or delete tasks it was not intended to touch.
+
+**Prevention:**
+- In the `AsanaTaskService`, only ever call the three endpoints listed above. Add an explicit allowlist of Asana API operations in code — do not build a general-purpose Asana client.
+- Add a `copland doctor --provider asana` check that lists which projects the PAT can access, so the user can audit the exposure surface.
+- Store the PAT in the same `~/.copland.yml` alongside the Anthropic API key — it never goes in repo-level config.
+- Confidence: HIGH (Asana PAT behavior is stable and well-documented).
+
+---
+
+### Pitfall D2: Asana Task Selection Logic Must Mirror GitHub Issue Selection — But Tasks Are Not Issues
+
+**What goes wrong:** GitHub issues have: `labels` (structured filtering), `number` (stable ID), `body` (description), `state` (open/closed), and a clear `agent-ready` label convention that already exists in the codebase.
+
+Asana tasks have: `tags` (similar to labels, but must be looked up by name via a separate API call), `gid` (opaque string ID, not a number), `notes` (the description), `completed` (boolean), and `custom_fields` (project-specific fields that vary by workspace setup).
+
+Pitfalls:
+1. **Tag lookup requires an extra API call.** There is no `GET /tasks?tag_name=agent-ready`. You must first `GET /workspaces/{id}/tags` to find the tag GID for "agent-ready", then `GET /tasks?tag={gid}`. If the tag does not exist in the workspace, the project has no filterable tasks.
+2. **Custom fields are workspace-specific.** A task's custom fields cannot be assumed — the field names and allowed values vary by project. The selector prompt must be told which custom field indicates "ready for automation" if tags are not used.
+3. **Task GID is a string, not an integer.** The existing `SelectionResult` stores `selectedIssueNumber` as `?int`. Asana task GIDs are strings like `"1208345678901234"`. The data model must accommodate both.
+4. **Task comments use `stories` API.** Adding a comment is `POST /tasks/{gid}/stories` with `{"text": "..."}` — not the same endpoint pattern as GitHub issue comments.
+
+**Prevention:**
+- Define an `AgentTask` value object that normalises GitHub issues and Asana tasks to a common shape: `id` (string), `title`, `description`, `source` (enum: github|asana), `raw` (the original response for provider-specific operations).
+- `SelectionResult` stores `selectedTaskId` as `string` (not `selectedIssueNumber` as `int`) to accommodate Asana GIDs.
+- The Asana service must accept a configured tag name and resolve it to a GID on first use (cache in memory for the run).
+- Document the "agent-ready" tag convention for Asana in the setup guide.
+- Confidence: HIGH (Asana API behavior is stable and well-documented).
+
+---
+
+### Pitfall D3: Asana API Rate Limit Is Low and Poorly Documented
+
+**What goes wrong:** Asana's API rate limit is 1500 requests per minute per user token. This sounds high, but pagination of task lists is per-page, and each page of results is one request. For a project with 100+ tasks, listing all tasks across multiple pages, then reading each task's details, can consume 20-30 requests before the selector even starts.
+
+More importantly, Asana enforces a "burst" rate limit that is much lower than the sustained limit. Rapid sequential requests (no delay between them) can trigger 429s even when well under the 1500/minute ceiling.
+
+Asana 429 responses include a `Retry-After` header, but it may be as long as 30 seconds for burst violations.
+
+**Prevention:**
+- Add a 100ms delay between Asana API calls in the task listing phase.
+- Respect the `Retry-After` header on 429 responses.
+- Cache the resolved tag GID and project task list for the duration of a single run (do not re-fetch).
+- Confidence: MEDIUM (rate limits based on training knowledge; Asana's docs are not always precise on burst behavior).
+
+---
+
+### Pitfall D4: Asana Pagination Uses Offset Tokens, Not Page Numbers
+
+**What goes wrong:** The existing GitHub `getIssues()` fetches page 1 with `?per_page=50&page=1` query parameters. Asana uses cursor-based pagination: each response includes a `next_page.offset` field, and you fetch the next page by passing `?offset={token}`. There is no `page=2` equivalent.
+
+If the Asana service is written by someone familiar only with GitHub's pagination style, it will either miss pages or silently return only the first page of tasks.
+
+**Prevention:**
+- Implement explicit pagination in `AsanaTaskService::getTasks()` that loops while `next_page` is present in the response. Add a max-pages cap (e.g., 5 pages, 100 tasks total) to prevent runaway fetching.
+- Confidence: HIGH (Asana pagination behavior is stable and documented).
+
+---
+
+### Pitfall D5: Asana Task Body Is Plain Text With No Markdown Rendering
+
+**What goes wrong:** The selector and planner prompts currently receive GitHub issue bodies, which are Markdown. The prompts may include instructions like "the issue body uses Markdown formatting." Asana task `notes` are plain text (no Markdown rendering in Asana's web UI). The selector/planner should receive this as plain text, but if the prompts give Markdown-specific instructions, model behavior may degrade on plain-text input.
+
+Conversely, the PR comment added to the Asana task (linking back to the GitHub PR) will be rendered as plain text in Asana. URLs will not be auto-linked unless the comment uses Asana's rich text format (`html_text` field instead of `text`).
+
+**Prevention:**
+- Strip Markdown-specific language from selector/planner prompts at the source adapter level, or pass a `source_format: plain_text` hint to the prompt template.
+- Use `html_text` for the Asana comment to ensure the PR URL is rendered as a clickable link.
+- Confidence: HIGH (Asana API behavior for `text` vs `html_text` is documented).
+
+---
+
+## Overnight / Unattended Operation
+
+### Pitfall E1: Silent Failure Modes Are Worse With Multiple Providers
+
+**What goes wrong:** With a single Anthropic provider, a failure is a known API error with a predictable shape. With three providers (Anthropic, Ollama, OpenRouter), new silent failure modes appear:
+
+- Ollama is not running: the first API call throws a connection refused exception. If this is caught and treated as a retryable network error, the run retries 3 times with 7 seconds of total delay, then exits with "API failed after 3 attempts." The run log shows "API failure" — it is not clear whether this is a transient Anthropic hiccup or Ollama being offline.
+- OpenRouter returns a valid HTTP 200 with a model error embedded in the response body (some OpenRouter models return errors as JSON with `error.message` inside a 200 response). The executor sees a `text` block containing the error message, no tool calls, and an `end_turn` — returns `success: true` with a summary that is actually an error message.
+- Ollama model without tool support returns `success: true` every time with no diff.
+
+All three of these return `success: true` or exit 0, which means no alert is raised in the morning review.
+
+**Prevention:**
+- After any run that returns `success: true`, verify the git diff is non-empty. A successful execution with zero file changes is always suspicious — treat it as a failure with reason "no files changed after reported success."
+- The structured run log should include the provider name and model used so the morning review can correlate "zero changes" with "used Ollama".
+- Confidence: HIGH (failure mode analysis directly from codebase + provider behavior).
+
+---
+
+### Pitfall E2: Provider Availability Gaps Mean Some Repos Never Get Processed
+
+**What goes wrong:** Copland processes repos sequentially in the multi-repo runner. If the first repo uses Ollama and Ollama is unavailable, that repo's run fails. The runner then moves to the next repo (which may use Anthropic) and succeeds. The Ollama-dependent repo is silently skipped every night.
+
+From the morning review perspective, the Anthropic repo has PRs. The Ollama repo has nothing. Without per-provider availability logging, the owner cannot distinguish "no suitable issues found" from "provider offline."
+
+**Prevention:**
+- The run log entry for each repo must include the provider name.
+- A provider connectivity check should run before the full orchestration loop, not inside it. If Ollama is offline, log a clear "skipping repos configured for Ollama: repo1, repo2 — Ollama not reachable" before attempting any runs.
+- Confidence: HIGH.
+
+---
+
+### Pitfall E3: Asana PAT Expiry Has No System Alert
+
+**What goes wrong:** Asana PATs do not expire by default, but they can be revoked via the Asana UI. If a PAT is revoked (e.g., security audit, accidental revocation), the Asana API returns a 401. This happens silently at 2am. The run log shows an auth error, the issue stays un-processed, and the user may not notice for days.
+
+There is no equivalent risk with GitHub auth because Copland uses `gh auth token` — if `gh` auth is broken, the `gh` CLI itself provides a clear message.
+
+**Prevention:**
+- On startup (before the run), test Asana auth with a lightweight call (`GET /users/me`). If it fails with 401, log a clear "Asana authentication failed — check PAT in ~/.copland.yml" and skip all Asana tasks for this run.
+- Confidence: HIGH (HTTP 401 behavior is universal).
+
+---
+
+### Pitfall E4: Per-Provider Config Complexity Increases Config Error Rate
+
+**What goes wrong:** The v1.1 `~/.copland.yml` will need new fields for each provider:
+
+```yaml
+provider: openrouter            # or anthropic, ollama
+openrouter_api_key: sk-or-...
+openrouter_model: anthropic/claude-3-haiku-20240307
+ollama_base_url: http://localhost:11434
+ollama_model: qwen2.5-coder:7b
+```
+
+And per-repo overrides in `.copland.yml`:
+
+```yaml
+provider: ollama   # override global default for this repo
+ollama_model: llama3.1:8b
+```
+
+Mistakes: using `anthropic` model names with `ollama` provider, mixing up OpenRouter and Anthropic key formats, forgetting to set `ollama_base_url` on a non-standard port.
+
+The tool currently has no startup config validation. A misconfigured provider fails at the first API call, 30 seconds into a run that has already paid selector tokens.
+
+**Prevention:**
+- Add a config validation step in `GlobalConfig` that runs before any API call. Validate: provider name is a known value, required key for the provider is present, model name format matches the provider convention (warn if Anthropic model name is used with Ollama).
+- `copland doctor` should test-call each configured provider and report capability (auth OK, model available, tool-use supported).
+- Confidence: HIGH.
+
+---
+
+## Prevention Strategies
+
+| Pitfall | Category | Phase Priority | Concrete Action |
+|---------|----------|----------------|----------------|
+| A1: Anthropic concepts leak through abstraction | Architecture | Must-do before any provider | Define internal `LlmResponse` VO; adapters translate before executor sees response |
+| A2: Cost estimator breaks for non-Anthropic models | Tracking | Must-do | Use OpenRouter's `usage.cost` field directly; make Ollama cost = $0 |
+| A3: Prompt caching breaks for non-Anthropic | Architecture | Must-do | Provider-aware system prompt builder; non-Anthropic uses plain string |
+| A4: Retry logic tied to Anthropic exception types | Reliability | Must-do | Standardise exception hierarchy at adapter boundary |
+| B1: Ollama models without tool-use | Correctness | Must-do | Capability probe on startup; model whitelist in docs |
+| B2: Ollama offline at 2am | Reliability | Must-do | Reachability check before run starts; launchd guide for persistent Ollama |
+| B3: Small context windows in local models | Reliability | Must-do | Provider-aware default `max_executor_rounds` and `read_file_max_lines` |
+| B4: OpenAI vs Anthropic response format | Architecture | Must-do before any provider | Provider adapter normalises response format |
+| C1: OpenRouter model naming confusion | UX | Should-do | Config validation warns on malformed model names |
+| C2: OpenRouter rate limits per underlying model | Reliability | Should-do | Parse `Retry-After` header; allow long waits in overnight mode |
+| C3: OpenRouter degraded tool-use for some models | Correctness | Should-do | Check `/api/v1/models` capability flag on startup |
+| C4: OpenRouter requires extra headers | Auth | Must-do | Always include `HTTP-Referer` and `X-Title` headers |
+| D1: Asana PAT over-permissioning | Security | Must-do | Explicit API operation allowlist in `AsanaTaskService` |
+| D2: Task != Issue (IDs, fields, shapes) | Architecture | Must-do | `AgentTask` VO normalises both sources; `selectedTaskId` as string |
+| D3: Asana burst rate limits | Reliability | Should-do | 100ms inter-request delay; respect `Retry-After` |
+| D4: Asana cursor pagination | Correctness | Must-do | Loop on `next_page.offset`; cap at 5 pages |
+| D5: Asana plain-text body vs GitHub Markdown | Quality | Nice-to-have | Strip Markdown hints from prompts; use `html_text` for PR comment |
+| E1: Silent success on no diff | Overnight | Must-do | Post-execution: treat `success: true` + zero diff as failure |
+| E2: Provider offline skips repos silently | Overnight | Should-do | Provider connectivity check before orchestration; per-provider log entries |
+| E3: Asana PAT revocation silent | Overnight | Should-do | `GET /users/me` auth probe on startup |
+| E4: Config error rate increases | Overnight | Must-do | Config validation before first API call; `copland doctor` provider tests |
 
 ---
 
 ## Sources
 
-- Grounded in direct code review: `ClaudeExecutorService.php`, `RunOrchestratorService.php`, `VerificationService.php`, `ExecutorRunState.php`
-- Grounded in codebase analysis: `.planning/codebase/CONCERNS.md` (2026-04-02)
-- Anthropic API behavior: context window limits, stop reasons, error codes — verified from training knowledge of Anthropic API docs (HIGH confidence; these are stable API contracts)
-- PHP cron environment behavior: `$_SERVER['HOME']` absence in launchd/cron — well-documented macOS/Linux behavior (HIGH confidence)
-- GitHub API pagination via link headers — standard GitHub REST API v3 behavior (HIGH confidence)
+- Grounded in direct code review: `ClaudeExecutorService.php` (lines 52-57, 101-113, 118-119, 140, 404-458), `AnthropicApiClient.php`, `AnthropicMessageSerializer.php`, `AnthropicCostEstimator.php`, `ClaudeSelectorService.php`, `ClaudePlannerService.php`
+- Anthropic vs OpenAI tool-call format differences: HIGH confidence (stable API contracts)
+- Ollama tool-use model support: MEDIUM confidence (training knowledge as of mid-2025; verify `ollama.com/search?c=tools` during implementation)
+- OpenRouter model metadata API and `usage.cost` field: MEDIUM confidence (training knowledge; verify at `openrouter.ai/docs`)
+- Asana PAT scope, pagination, and rate limit behavior: HIGH confidence (stable, well-documented Asana REST API)
+- macOS Ollama application lifecycle behavior: HIGH confidence

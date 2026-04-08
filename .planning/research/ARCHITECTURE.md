@@ -1,520 +1,558 @@
-# Architecture Patterns: Resilience, Logging, Caching
+# Architecture Research: Multi-Provider LLM + Asana
 
-**Project:** Copland — autonomous overnight GitHub issue resolver
-**Dimension:** Adding resilience layer, structured logging, prompt caching, file size management
-**Researched:** 2026-04-02
-**Note:** WebSearch and WebFetch unavailable. Findings drawn from direct code analysis +
-  training knowledge (cutoff Aug 2025). Anthropic API specifics flagged with confidence level.
+**Project:** Copland v1.1
+**Researched:** 2026-04-08
+**Mode:** Integration architecture for existing codebase
 
 ---
 
-## Current Architecture (Baseline)
+## Current State Summary
 
-Before documenting what to add, the relevant current shape:
+The three Claude service classes (`ClaudeSelectorService`, `ClaudePlannerService`,
+`ClaudeExecutorService`) all receive an `AnthropicApiClient` by constructor injection.
+`AnthropicApiClient` wraps the `anthropic-ai/sdk` PHP client
+(`$this->client->messages->create()`), adds retry/backoff, and returns the SDK's native
+response object.
 
-```
-RunCommand
-  └── RunOrchestratorService.run()          ← 8-step pipeline, $this->log[]
-        ├── ClaudeSelectorService.selectTask()   ← single API call, no retry
-        ├── ClaudePlannerService.planTask()      ← single API call, no retry
-        └── ClaudeExecutorService.executeWithPolicy()
-              └── while(true) { $client->messages->create() }  ← agentic loop, no retry
-```
+The coupling points that must change for multi-provider support:
 
-**What exists that the new layer builds on:**
-- `RunOrchestratorService.$this->log[]` — plain string array, flushed via `pushLog()`
-- `RunProgressSnapshot` — mutable snapshot for SIGINT cost reporting
-- `ModelUsage` / `AnthropicCostEstimator` — per-stage token accounting, combine() exists
-- `ExecutorRunState` — per-run in-memory state (thrashing detection)
-- All three Claude services construct `$this->client` directly in `__construct()`
-- `$progressCallback` threading already exists from command → orchestrator → executor
+1. **`AnthropicApiClient::messages()` return type** — returns the SDK's native object.
+   Callers destructure it directly:
+   - `$response->content[0]->text` (selector, planner)
+   - `$response->stopReason` (executor)
+   - `$response->content[$block]->type === 'tool_use'`, `$block->id`, `$block->name`,
+     `$block->input` (executor)
+   - `$response->usage->inputTokens`, `->cacheCreationInputTokens`, `->cacheReadInputTokens`
+     (all three services)
+   This schema is Anthropic SDK-specific.
 
----
+2. **`ClaudeExecutorService`** — imports `Anthropic\Messages\CacheControlEphemeral` and
+   `Anthropic\Messages\TextBlockParam` to build the system prompt block for prompt caching.
+   These types belong to the SDK and are not available for other providers.
 
-## Question 1: Resilience and Recovery from Partial Failures
+3. **`AnthropicCostEstimator`** — hardcoded Anthropic model name matching
+   (`str_contains($normalized, 'haiku-4-5')`). Fails silently for non-Anthropic model
+   strings, returning the Sonnet rate `[3.0, 15.0]`.
 
-### Pattern in Similar Systems (MEDIUM confidence)
+4. **`GlobalConfig`** — no provider concept. Only `claude_api_key` and model name fields.
+   Model names like `claude-haiku-4-5` implicitly assume Anthropic.
 
-Autonomous coding agents and batch AI processors converge on two patterns:
+5. **`RunCommand::runRepo()`** — constructs `AnthropicApiClient` directly with
+   `new Client(apiKey: $globalConfig->claudeApiKey())` (Anthropic SDK).
+   This is the single wiring point for the API client.
 
-**Pattern A — Retry at the call site (most common)**
-Wrap the individual API call. On transient error (429, 502, 503, network timeout), sleep
-and retry with exponential backoff. Do not retry on 400 (bad request), 401 (auth), or
-policy violations — those are permanent failures.
-
-**Pattern B — Checkpoint + resume (more complex)**
-After each successful pipeline stage, serialize state. On failure, reload last checkpoint
-and resume from that stage. This is what `CONCERNS.md` calls out as the ideal for the
-executor loop ("round 8/12 partial failure").
-
-For Copland's codebase today, **Pattern A is the right first move**. Pattern B would
-require serializing `$messages[]` and `ExecutorRunState` after each round, which is a
-meaningful refactor. Pattern A is a small wrapper that closes the highest-value gap.
-
-### Concrete Architecture: Where to Put Retry
-
-**The retry layer belongs in a new `AnthropicApiClient` wrapper, not in each service.**
-
-Rationale: All three services (`ClaudeSelectorService`, `ClaudePlannerService`,
-`ClaudeExecutorService`) call `$this->client->messages->create(...)` directly. Adding
-retry in three places creates drift. A single wrapper enforces consistency.
-
-```
-NEW: app/Support/AnthropicApiClient.php
-  - Wraps the Anthropic\Client
-  - Implements withRetry(callable $call, int $maxAttempts = 3): mixed
-  - Backoff: 1s, 2s, 4s (jitter optional, not required for cron use)
-  - Retries on: 429, 500, 502, 503, 504, ConnectException, TimeoutException
-  - Does not retry on: 400, 401, 403, PolicyViolationException
-  - Logs each retry attempt via an injected callback or to error_log()
-```
-
-All three Claude services receive this wrapper instead of constructing `Anthropic\Client`
-directly. The constructor change is small:
-
-```
-Before: $this->client = new Client(apiKey: $this->config->claudeApiKey())
-After:  $this->client = new AnthropicApiClient($this->config->claudeApiKey())
-```
-
-The three `->create(...)` call sites become `$this->client->createWithRetry(...)`.
-
-**Why not inject Anthropic\Client and wrap calls in each service?**
-That would require modifying three services and keeping them in sync. The wrapper
-encapsulates the retry contract in one place and tests in one place.
-
-### Component Boundary
-
-| Component | Responsibility | Communicates With |
-|-----------|---------------|-------------------|
-| `AnthropicApiClient` | Retry/backoff wrapper around SDK client | All three Claude services |
-| `ClaudeSelectorService` | Unchanged except uses new client | `AnthropicApiClient` |
-| `ClaudePlannerService` | Unchanged except uses new client | `AnthropicApiClient` |
-| `ClaudeExecutorService` | Unchanged except uses new client | `AnthropicApiClient` |
-
-### Retry Configuration
-
-Expose via `GlobalConfig` so `.copland.yml` can override:
-```yaml
-api_retry_attempts: 3        # default
-api_retry_base_delay_ms: 1000  # exponential base
-```
+6. **`RunOrchestratorService`** — hardwired to `GitHubService` as task source. Step 1
+   calls `$this->github->getIssues()`. On-task success/failure comments always target
+   GitHub issues. No abstraction over task source exists.
 
 ---
 
-## Question 2: Structured Logging for Unattended Batch Processes
+## LLM Provider Abstraction
 
-### Pattern in Similar Systems (MEDIUM confidence)
+### New Interface and Value Objects
 
-Unattended batch processes and overnight agents converge on two logging concerns:
-
-1. **Machine-readable log file** — JSON Lines (one JSON object per line, newline-delimited).
-   Readable with `jq`, grep-able, appendable without locking.
-2. **Human-readable console output** — the existing `$progressCallback` → `$this->line()` path.
-   Already works for interactive use; cron captures it to syslog or stdout redirect.
-
-The mistake to avoid is using a full PSR-3 logging framework (Monolog). For a personal
-CLI tool with no web interface, Monolog is overengineering. The right answer is a thin
-`RunLogger` class that writes JSON Lines to a single log file.
-
-### Concrete Architecture
-
-```
-NEW: app/Support/RunLogger.php
-  - Opened at run start: ~/.copland/logs/runs.jsonl (append mode)
-  - Each call to log(string $event, array $context = []) appends one line:
-      {"ts":"2026-04-02T02:31:00Z","event":"executor.tool_call","tool":"write_file","path":"src/Foo.php","round":3}
-  - close() flushes file handle at run end (or in finally block)
-  - Static events defined as constants or docblock (no magic strings from callers)
-```
-
-**Key log events to emit:**
-
-| Event key | When | Context |
-|-----------|------|---------|
-| `run.start` | RunOrchestratorService enters run() | repo, timestamp |
-| `run.end` | run() returns RunResult | status, issue_number, pr_url, total_cost_usd, duration_s |
-| `selector.response` | selector returns | decision, issue_number, input_tokens, output_tokens |
-| `planner.response` | planner returns | decision, branch_name, input_tokens |
-| `executor.round_start` | top of executor while loop | round_number |
-| `executor.tool_call` | each tool dispatch | tool_name, path/command, is_error |
-| `executor.api_retry` | AnthropicApiClient retries | attempt_number, http_status |
-| `executor.round_end` | after tool results appended | round_number, input_tokens, output_tokens |
-| `run.failure` | any unrecoverable failure | failure_reason, stage |
-
-### Integration Point
-
-`RunLogger` is constructed in `RunCommand.handle()` alongside `RunProgressSnapshot`, and
-passed into `RunOrchestratorService` the same way `$progressCallback` and `$snapshot` are
-passed today. The orchestrator passes it further into `ClaudeExecutorService` for
-round-level events.
-
-```
-RunCommand
-  └── $logger = new RunLogger()   // opens ~/.copland/logs/runs.jsonl
-      └── RunOrchestratorService::run(..., $logger)
-            └── ClaudeExecutorService::executeWithRepoProfile(..., $logger)
-```
-
-**No new dependency injection framework needed.** The passing pattern already exists for
-`$snapshot` — this mirrors it exactly.
-
-### Log File Management
-
-- Single append-only file: `~/.copland/logs/runs.jsonl`
-- Rotation: not needed at cron-once-per-night scale. At 1KB/run × 365 runs = 365KB/year.
-- Review: `tail -n 20 ~/.copland/logs/runs.jsonl | jq .` for last 20 events.
-- The log is not deleted on success — it is the audit trail.
-
-### Component Boundary
-
-| Component | Responsibility | Communicates With |
-|-----------|---------------|-------------------|
-| `RunLogger` | Opens file, appends JSON lines, closes | `RunOrchestratorService`, `ClaudeExecutorService`, `AnthropicApiClient` |
-| `RunOrchestratorService` | Calls `$logger->log()` at stage boundaries | `RunLogger` |
-| `ClaudeExecutorService` | Calls `$logger->log()` per round and per tool | `RunLogger` |
-
----
-
-## Question 3: Token/Cost Budget Management Across Multi-Stage Pipelines
-
-### Current State
-
-Copland already has per-stage token tracking (`ModelUsage`, `AnthropicCostEstimator`).
-The gap is not measurement — it is enforcement. There is no mechanism to abort a run if
-the cost is projected to exceed a budget.
-
-### Pattern in Similar Systems (MEDIUM confidence)
-
-Agentic pipelines that run unattended commonly implement a **soft budget with hard cutoff**:
-
-- **Soft limit** — warn when projected cost exceeds X% of budget. Log the warning, do not abort.
-- **Hard limit** — abort if cumulative cost exceeds Y. Return a failure result with reason "budget exceeded".
-
-For Copland, the only relevant stage is the executor loop. Selector + planner are single
-calls with bounded cost. The executor loop is unbounded (max 12 rounds × file reads).
-
-### Concrete Architecture
-
-**No new class needed.** Budget enforcement belongs in `ClaudeExecutorService` using the
-`RunProgressSnapshot` that already exists.
-
-Add two fields to `GlobalConfig` / `.copland.yml`:
-
-```yaml
-max_run_cost_usd: 0.50   # hard limit per run (default: no limit)
-warn_run_cost_usd: 0.30  # soft warning threshold (default: no limit)
-```
-
-In the executor loop, after updating `$snapshot`, check:
+**`app/Contracts/LlmClient.php`**
 
 ```php
-if ($config->maxRunCostUsd() !== null) {
-    $currentCost = $snapshot->totalEstimatedCost();  // sum selector + planner + executor
-    if ($currentCost >= $config->maxRunCostUsd()) {
-        // return ExecutionResult failure with reason "budget exceeded ($X)"
-    }
+namespace App\Contracts;
+
+interface LlmClient
+{
+    public function messages(
+        string $model,
+        int $maxTokens,
+        string|array $system = '',
+        array $tools = [],
+        array $messages = [],
+    ): LlmResponse;
 }
 ```
 
-`RunProgressSnapshot::totalEstimatedCost()` is a new method that sums the three nullable
-`ModelUsage` objects using the existing `AnthropicCostEstimator::combine()`.
-
-**Why not track at the orchestrator level?**
-The orchestrator does not have a loop — it calls executor once and waits. The only place
-where cost accumulates incrementally is inside the executor's while loop. That is where
-the check must live to be effective.
-
-### Component Boundary
-
-| Component | Change | Why |
-|-----------|--------|-----|
-| `GlobalConfig` | Add `maxRunCostUsd(): ?float` and `warnRunCostUsd(): ?float` | Source of budget limits |
-| `RunProgressSnapshot` | Add `totalEstimatedCost(): ?float` method | Convenience aggregator |
-| `ClaudeExecutorService` | Check snapshot cost after each `$response` in the while loop | Only place with incremental cost |
-| `AnthropicCostEstimator` | No change needed | `combine()` already handles aggregation |
-
-### Note on Cached Token Pricing
-
-When prompt caching is enabled (see Question 4), cached input tokens cost significantly
-less than uncached input tokens (approximately 0.1x cost for cache reads). The existing
-`AnthropicCostEstimator` uses a single input rate per model. After adding caching,
-it should separate `cacheWriteTokens`, `cacheReadTokens`, and `uncachedInputTokens`.
-
-The API response includes these fields in `usage`:
-- `input_tokens` — total input tokens sent
-- `cache_creation_input_tokens` — tokens written to cache (billed at 1.25x)
-- `cache_read_input_tokens` — tokens served from cache (billed at 0.1x)
-
-`ModelUsage` and `AnthropicCostEstimator` will need to handle these to give accurate cost
-estimates when caching is active. This is a direct dependency: add caching first, then
-update the cost estimator, otherwise reported costs will be wrong.
-
----
-
-## Question 4: Anthropic Prompt Caching and Multi-Turn Conversation History
-
-### How Prompt Caching Works (HIGH confidence — well-established behavior as of Aug 2025)
-
-Anthropic's prompt caching caches a prefix of the request up to a marked `cache_control`
-boundary. The cache is keyed on the exact token sequence from the start of the request
-to the last `cache_control: {type: "ephemeral"}` marker. Cache lifetime is 5 minutes
-(ephemeral). Cache hits reduce input token cost to approximately 10% of uncached rate.
-
-**Cache invalidation:** Any change to the token sequence before the cache_control marker
-invalidates the cache. This is the critical constraint for multi-turn conversations.
-
-### The Multi-Turn Problem
-
-In a multi-turn conversation, the `messages` array grows each round:
-
-```
-Round 1: [user: contract]
-Round 2: [user: contract, assistant: tool_use, user: tool_result]
-Round 3: [user: contract, assistant: tool_use, user: tool_result, assistant: ..., user: ...]
-...
-Round 12: [12 exchanges]
-```
-
-Every round adds new messages at the end of the array. If the cache_control marker is on
-the system prompt, the system prompt prefix is identical across all rounds — cache hits
-every round after the first (subject to the 5-minute TTL).
-
-If the cache_control marker is on the last message (common misuse), the cache is
-invalidated every round because the last message changes. This produces no benefit.
-
-### Where to Place cache_control in Copland
-
-**Correct placement: on the system prompt only.**
-
-The system prompt (`resources/prompts/executor.md`) is static — it does not change between
-rounds. It contains the tool instructions and behavioral rules. This is the ideal cache
-target because:
-
-1. It is the largest static prefix (~800 tokens per CONCERNS.md)
-2. It is sent on every round unchanged
-3. It anchors before the variable `messages` array
-
-The change in `ClaudeExecutorService.executeWithPolicy()` is at line 93:
+**`app/Contracts/LlmResponse.php`**
 
 ```php
-// Before:
-system: $systemPrompt,
+namespace App\Contracts;
 
-// After:
-system: [
-    [
-        'type' => 'text',
-        'text' => $systemPrompt,
-        'cache_control' => ['type' => 'ephemeral'],
-    ]
-],
+class LlmResponse
+{
+    public function __construct(
+        public readonly string   $stopReason,  // 'end_turn' | 'tool_use' | 'stop'
+        public readonly array    $content,     // normalized blocks (array shapes below)
+        public readonly ?LlmUsage $usage,
+    ) {}
+}
 ```
 
-This is the "one-line change" referenced in CONCERNS.md (it's actually a small array
-restructuring, but the conceptual delta is minimal).
-
-### Cache Hit Rate in Practice
-
-With the executor running 12 rounds:
-- Round 1: cache MISS (writes cache) — billed at 1.25x for cache creation
-- Rounds 2-12: cache HIT (reads cache) — billed at 0.1x
-- Net: 11 out of 12 rounds pay 0.1x for the system prompt prefix
-
-At ~800 tokens system prompt, 12 rounds, Sonnet at $3/MTok:
-- Without caching: 800 × 12 × $3/MTok = $0.0000288 per run (small absolute, but 10%+ of executor input)
-- With caching: 800 × 1 × $3.75/MTok + 800 × 11 × $0.30/MTok = $0.000003 + $0.00000264 = ~89% reduction on that prefix
-
-The bigger win is from large file reads. A 300-line file read in round 2 re-sends as
-conversation history in rounds 3-12. That content is already in messages[], not system[],
-so it does not benefit from system prompt caching.
-
-**Important:** Tool definitions passed in `tools:` are also sent every round. The PHP SDK
-may allow caching tool definitions alongside the system prompt. If the SDK exposes a
-`cache_control` on the tools array, mark the last tool with cache_control as well. This
-would cache both system prompt and tool schema together as a single prefix.
-**Confidence: MEDIUM** — verify against current SDK version before implementing.
-
-### Cache Interaction With Growing History
-
-The cache key is the token sequence from position 0 to the cache_control boundary. The
-`messages[]` array after the boundary is not part of the cache key. This means:
-
-- System prompt cached: UNAFFECTED by growing messages. Cache hits every round.
-- Last user message cached: BREAKS every round because messages grows.
-- Middle message cached: BREAKS whenever any earlier message changes.
-
-Conclusion: for Copland's agentic loop, **only cache the system prompt**. Do not attempt
-to cache messages inside the conversation history.
-
-### Integration Point in the Existing Architecture
+Content blocks are normalized to plain array shape:
 
 ```
-ClaudeExecutorService.executeWithPolicy()
-  Line 50:  $systemPrompt = file_get_contents(...)    // no change
-  Line 93:  system: $systemPrompt                     // CHANGE to array form with cache_control
+['type' => 'text',     'text' => '...']
+['type' => 'tool_use', 'id' => '...', 'name' => '...', 'input' => [...]]
 ```
 
-No other component needs to change for the caching feature itself. The cost estimator
-should be updated afterward to separate cache write / cache read tokens for accurate
-reporting (see Question 3 note above).
+**`app/Contracts/LlmUsage.php`**
+
+```php
+namespace App\Contracts;
+
+class LlmUsage
+{
+    public function __construct(
+        public readonly int $inputTokens,
+        public readonly int $outputTokens,
+        public readonly int $cacheWriteTokens = 0,
+        public readonly int $cacheReadTokens  = 0,
+    ) {}
+}
+```
+
+These three contracts eliminate the SDK type dependency from all Claude service classes.
+Content blocks are accessed via array keys rather than object properties.
+
+### How Existing Claude Services Adapt
+
+All three services replace the `AnthropicApiClient` type hint with `LlmClient`:
+
+```
+ClaudeSelectorService::__construct(private LlmClient $apiClient)
+ClaudePlannerService::__construct(private LlmClient $apiClient)
+ClaudeExecutorService::__construct(private LlmClient $apiClient)
+```
+
+Response access changes from object property to array key:
+
+```
+Before: $response->content[0]->text
+After:  $response->content[0]['text']
+
+Before: $block->type === 'tool_use'
+After:  $block['type'] === 'tool_use'
+
+Before: $block->name, $block->id, (array)$block->input
+After:  $block['name'], $block['id'], $block['input']
+
+Before: $response->usage->inputTokens
+After:  $response->usage->inputTokens   (same path, now on LlmUsage)
+```
+
+The executor's prompt-caching system prompt (`TextBlockParam::with(...)` with
+`CacheControlEphemeral`) is Anthropic SDK-specific. The solution is to move the cache
+annotation decision into `AnthropicApiClient` itself. The `LlmClient` interface accepts
+`system` as `string|array`. When a plain string is passed, `AnthropicApiClient` wraps it
+in a `TextBlockParam` with `CacheControlEphemeral` before calling the SDK — Anthropic
+caching is preserved without SDK types leaking into the service layer. Non-Anthropic
+providers receive the plain string and send it as-is. This removes the
+`CacheControlEphemeral` and `TextBlockParam` imports from `ClaudeExecutorService`.
+
+### Config Flow
+
+`GlobalConfig` gains a top-level `llm` block:
+
+```yaml
+# ~/.copland.yml
+
+llm:
+  provider: anthropic                          # anthropic | ollama | openrouter
+  anthropic_api_key: ""
+  openrouter_api_key: ""
+  ollama_base_url: "http://localhost:11434"
+
+models:
+  selector: claude-haiku-4-5
+  planner: claude-sonnet-4-6
+  executor: claude-sonnet-4-6
+```
+
+Per-repo `.copland.yml` can override provider and models:
+
+```yaml
+llm:
+  provider: ollama
+  ollama_base_url: "http://localhost:11434"
+
+models:
+  selector: qwen2.5-coder:7b
+  planner: qwen2.5-coder:32b
+  executor: qwen2.5-coder:32b
+```
+
+**Provider resolution order:** per-repo `llm.provider` → global `llm.provider` → default
+`anthropic`.
+
+**New methods on `GlobalConfig`:**
+- `llmProvider(): string`
+- `anthropicApiKey(): string` (renamed from `claudeApiKey()` — old name kept as alias)
+- `openRouterApiKey(): string`
+- `ollamaBaseUrl(): string`
+
+**New methods on `RepoConfig`:**
+- `llmProvider(): ?string` — null means use global default
+- `ollamaBaseUrl(): ?string`
+- `selectorModel(): ?string` — null means use global default
+- `plannerModel(): ?string`
+- `executorModel(): ?string`
+
+The combined provider + model resolution happens in `LlmClientFactory` (see below).
 
 ---
 
-## Component Map: New Components and Integration
+## Ollama + OpenRouter Concrete Providers
 
-### New Components
+### Implementation Approach
 
-```
-app/Support/AnthropicApiClient.php     ← retry/backoff wrapper
-app/Support/RunLogger.php              ← structured JSON Lines logger
+Both Ollama (since 0.1.24) and OpenRouter expose an OpenAI-compatible
+`/v1/chat/completions` endpoint. One concrete implementation handles both — the only
+differences are base URL and auth header.
+
+**New class: `app/Support/OpenAiCompatClient.php`** — implements `LlmClient`
+
+The method converts Copland's `messages` array (already OpenAI-shaped:
+`[['role'=>'user','content'=>...]]`) plus `system` string into a `chat/completions`
+request body. Tool definitions follow the OpenAI `tools` format, which is already
+compatible with the schema produced by `ClaudeExecutorService::buildTools()` — no
+changes needed there.
+
+Response normalization:
+- `choices[0].finish_reason` → `LlmResponse::$stopReason` (map `'stop'` to `'end_turn'`
+  so executor condition `$response->stopReason === 'end_turn'` still works)
+- `choices[0].message.content` → text block
+- `choices[0].message.tool_calls[]` → normalized `['type'=>'tool_use','id'=>...,'name'=>...,'input'=>...]`
+- `usage.prompt_tokens` / `usage.completion_tokens` → `LlmUsage`
+- No cache fields — `cacheWriteTokens` and `cacheReadTokens` default to 0
+
+**Retry:** Extract retry/backoff logic from `AnthropicApiClient` into a decorator:
+
+**New class: `app/Support/RetryingLlmClient.php`** — wraps any `LlmClient`, adds
+exponential backoff. Both `AnthropicApiClient` and `OpenAiCompatClient` become thin
+clients. `RetryingLlmClient` wraps whichever concrete client is constructed.
+
+**New class: `app/Support/LlmClientFactory.php`**
+
+```php
+public static function make(
+    string $provider,        // 'anthropic' | 'ollama' | 'openrouter'
+    GlobalConfig $global,
+    ?RepoConfig $repo = null,
+): LlmClient
 ```
 
-### Modified Components
+Returns `RetryingLlmClient` wrapping the appropriate concrete client. Reads API keys,
+base URLs, and retry config from the merged global + repo config.
 
-```
-app/Config/GlobalConfig.php            ← add maxRunCostUsd, warnRunCostUsd, retry config
-app/Support/RunProgressSnapshot.php   ← add totalEstimatedCost() method
-app/Data/ModelUsage.php                ← add cacheWriteTokens, cacheReadTokens fields
-app/Support/AnthropicCostEstimator.php ← update cost calculation for cache tokens
-app/Services/ClaudeSelectorService.php ← use AnthropicApiClient instead of Client
-app/Services/ClaudePlannerService.php  ← use AnthropicApiClient instead of Client
-app/Services/ClaudeExecutorService.php ← use AnthropicApiClient, add cache_control,
-                                         add budget check, add RunLogger calls
-app/Commands/RunCommand.php            ← construct RunLogger, pass to orchestrator
-app/Services/RunOrchestratorService.php ← accept RunLogger, call at stage boundaries
-```
+**Ollama specifics:**
+- Base URL: `http://localhost:11434/v1`
+- No auth header
+- Tool call support depends on the model. Models known to support tools as of mid-2025:
+  `qwen2.5-coder`, `llama3.1`, `mistral-nemo`. `LlmClientFactory` should emit a
+  descriptive error on first tool dispatch failure, not a silent hang.
 
-### Full Dependency Graph After Changes
+**OpenRouter specifics:**
+- Base URL: `https://openrouter.ai/api/v1`
+- Auth: `Authorization: Bearer {openrouter_api_key}`
+- OpenRouter recommends `HTTP-Referer` and `X-Title` headers for routing/analytics — add
+  as optional config `llm.openrouter_referer` and `llm.openrouter_title`.
 
-```
-RunCommand
-  ├── new RunLogger()                          // new
-  ├── new RunProgressSnapshot()
-  └── RunOrchestratorService::run(..., $logger, $snapshot)
-        ├── ClaudeSelectorService
-        │     └── AnthropicApiClient           // new (replaces Anthropic\Client)
-        ├── ClaudePlannerService
-        │     └── AnthropicApiClient           // new
-        └── ClaudeExecutorService
-              ├── AnthropicApiClient           // new
-              ├── cache_control on system[]    // new
-              └── budget check vs $snapshot   // new
-```
+**Cost reporting for non-Anthropic models:**
+`AnthropicCostEstimator::ratesForModel()` currently falls back to `[3.0, 15.0]` (Sonnet
+rate) for unknown model strings. Change the fallback to `[0.0, 0.0]` for any string not
+matching known Anthropic patterns. Ollama is local (no dollar cost). OpenRouter model
+costs vary — display the token counts but show `$0.0000 est. (rate unknown)` for
+unrecognized model strings rather than a misleading Sonnet-rate estimate.
 
 ---
 
-## Recommended Build Order
+## Asana Task Source
 
-The four improvements have the following dependency constraints:
+### IssueSource Interface
 
-1. `AnthropicApiClient` (retry wrapper) — **no dependencies**, highest value per effort.
-   Build first. Unblocks reliable overnight runs immediately.
+The orchestrator's task-fetch and task-feedback calls are currently GitHub-specific and
+inline. Introducing an interface separates "where do tasks come from" and "how do we
+report back" from the execution pipeline.
 
-2. `RunLogger` (structured logging) — **no dependencies on other new components**.
-   Build second. Independent of caching and budget enforcement. Requires small plumbing
-   through the call stack but touches no business logic.
+**New interface: `app/Contracts/TaskSource.php`**
 
-3. Prompt caching (`cache_control` on system prompt) — **depends on ModelUsage update**
-   to report cache tokens accurately. The caching change itself is trivial; accurate cost
-   reporting requires ModelUsage and AnthropicCostEstimator to understand cache fields.
-   Build third (two sub-tasks: add caching, then update cost model).
+```php
+namespace App\Contracts;
 
-4. File size cap on `readFile()` — **independent of all above**, but benefits from RunLogger
-   being in place (log truncation events). Build fourth or alongside step 3.
+interface TaskSource
+{
+    /**
+     * Return candidate tasks as normalized arrays.
+     * Required fields: number (int), title (string), body (string), labels (string[]).
+     * 'number' is a source-local identifier usable by selector and prefilter.
+     */
+    public function getTasks(string $repo, array $repoProfile): array;
 
-5. Budget enforcement — **depends on RunProgressSnapshot::totalEstimatedCost()** which
-   depends on accurate cost modeling from step 3. Build last.
+    /**
+     * Called on PR open success. Post PR link to the source task.
+     */
+    public function onSuccess(string $repo, int $taskNumber, string $prUrl, string $summary): void;
 
-**Build sequence:**
+    /**
+     * Called on execution or verification failure. Post failure note to the source task.
+     */
+    public function onFailure(string $repo, int $taskNumber, string $reason): void;
+}
 ```
-Phase A: AnthropicApiClient + retry (closes overnight failure risk)
-Phase B: RunLogger + log plumbing (closes observability gap)
-Phase C: cache_control + ModelUsage cache fields + AnthropicCostEstimator update (closes cost gap)
-Phase D: readFile() size cap (closes context bloat gap)
-Phase E: Budget enforcement in executor loop (closes runaway cost gap)
+
+**GitHub task source: `app/Services/GitHubTaskSource.php`** — wraps `GitHubService`.
+Moves the `getIssues()`, `commentOnIssue()` success/failure calls that are currently
+inline in `RunOrchestratorService` into this class. No behavior change — this is a
+structural extraction. Label removal (`removeLabel()`) stays in the orchestrator directly
+because it is a GitHub PR-tracking concern shared regardless of task source.
+
+**Asana task source: `app/Services/AsanaTaskSource.php`** — wraps `AsanaService`.
+
+### New AsanaService
+
+**Location: `app/Services/AsanaService.php`**
+
+Responsibilities:
+- Fetch tasks from an Asana project:
+  `GET https://app.asana.com/api/1.0/tasks?project={gid}&opt_fields=gid,name,notes,tags.name,completed`
+- Filter to `completed: false` tasks matching required tags.
+- Post a story (comment) to a task:
+  `POST https://app.asana.com/api/1.0/tasks/{gid}/stories`
+  Body: `{"data": {"text": "..."}}`
+
+**Auth:** Personal Access Token stored in `~/.copland.yml` as `asana.pat`.
+Authorization header: `Authorization: Bearer {pat}`.
+
+**HTTP client:** Reuse Guzzle (already a dependency). New `Client` instance with
+`base_uri: https://app.asana.com/api/1.0`.
+
+**Public interface:**
+```php
+public function getTasks(string $projectGid): array          // returns normalized task arrays
+public function addStory(string $taskGid, string $text): void
 ```
 
-Phases A and B are independent and could be done in parallel.
-Phase E must follow Phase C.
+`AsanaTaskSource` wraps `AsanaService`, normalizes tasks to the `[number, title, body,
+labels]` shape the selector and prefilter expect, and implements `onSuccess` / `onFailure`
+via `addStory`.
+
+**GID handling:** Asana GIDs are 16-digit numeric strings (e.g. `"1204567890123456"`). On
+64-bit PHP, these are safely representable as `int` (max PHP int on 64-bit is ~9.2×10^18;
+max Asana GID observed is ~1.8×10^15). `AsanaTaskSource` holds a `gidMap` property:
+a `[int $index => string $gid]` array populated in `getTasks()`. The `number` field
+exposed to selector/prefilter is the list index (1-based). `onSuccess` and `onFailure`
+look up the GID from `gidMap` by task number.
+
+### Config: Project to Repo Mapping
+
+```yaml
+# ~/.copland.yml
+
+asana:
+  pat: ""
+  projects:
+    - project_gid: "1204567890123456"
+      repo: owner/repo
+      required_tags: [agent-ready]       # optional; no filter if omitted
+      blocked_tags:  [agent-skip, blocked] # optional
+```
+
+**New methods on `GlobalConfig`:**
+- `asanaPat(): string`
+- `asanaProjects(): array`
+- `asanaProjectGidForRepo(string $repo): ?string`
+
+Per-repo `.copland.yml` can declare task source explicitly:
+
+```yaml
+task_source: asana    # github (default) | asana
+```
+
+**New method on `RepoConfig`:**
+- `taskSource(): ?string` — null means auto-detect from global config
+
+### Task Source Resolution
+
+In `RunCommand::runRepo()` (or extracted to `TaskSourceFactory`):
+
+1. If `RepoConfig::taskSource()` is `'asana'` → use `AsanaTaskSource`.
+2. Else if `GlobalConfig::asanaProjectGidForRepo($repo)` returns non-null → use
+   `AsanaTaskSource`.
+3. Otherwise → use `GitHubTaskSource`.
+
+**New class: `app/Support/TaskSourceFactory.php`**
+
+### Task Lifecycle: Selection → PR → Comment
+
+Current GitHub-inline flow in `RunOrchestratorService` (steps affected):
+
+| Step | Current call | After refactor |
+|------|-------------|----------------|
+| Step 1: fetch tasks | `$this->github->getIssues(...)` | `$this->taskSource->getTasks(...)` |
+| Step 6: exec failure | `$this->github->commentOnIssue(...)` | `$this->taskSource->onFailure(...)` |
+| Step 7: verify failure | `$this->github->commentOnIssue(...)` | `$this->taskSource->onFailure(...)` |
+| Post-PR: success | `$this->github->commentOnIssue(...)` + `removeLabel(...)` | `$this->taskSource->onSuccess(...)` + `$this->github->removeLabel(...)` |
+
+PR creation (`createDraftPr`) always targets GitHub regardless of task source — this stays
+on `GitHubService` directly in the orchestrator.
+
+Label removal (`removeLabel`) stays on `GitHubService` directly — it is not a task-source
+concern; it reflects PR state on the GitHub issue tracker regardless of where the task
+originated.
+
+`GitHubTaskSource::onSuccess()` calls `github->commentOnIssue()` with the PR link — exact
+current behavior.
+`AsanaTaskSource::onSuccess()` calls `asana->addStory(gid, "PR opened: {$prUrl}\n\n{$summary}")`.
+`AsanaTaskSource::onFailure()` calls `asana->addStory(gid, "Agent run failed: {$reason}")`.
+
+**`RunOrchestratorService` constructor change:**
+
+```
+Before: private GitHubService $github (used for both tasks and PR/label ops)
+After:  private GitHubService $github (PR creation + label removal only)
+        private TaskSource $taskSource (task fetch + task-side feedback)
+```
+
+### Prefilter Compatibility
+
+`IssuePrefilterService` currently calls `$this->github->hasOpenLinkedPr()` to exclude
+issues already in progress. Asana tasks have no equivalent — there is no linked-PR concept
+in Asana's data model.
+
+Recommendation: keep `IssuePrefilterService` as-is. When task source is Asana, the
+`GitHubTaskSource`-specific prefilter step (linked PR check) is simply skipped because
+`AsanaTaskSource::getTasks()` does not involve GitHub issues at all. The
+`IssuePrefilterService` only operates on the normalized task list; the `hasOpenLinkedPr`
+check requires the GitHub issue `number` field to correlate, which Asana tasks will not
+have a real GitHub issue number for. Solution: pass the task source type into
+`IssuePrefilterService` (or provide an injectable skip flag), and skip the
+`hasOpenLinkedPr` call for non-GitHub sources.
 
 ---
 
-## Anti-Patterns to Avoid
+## Suggested Build Order
 
-### Anti-Pattern 1: Retry Inside the Executor Loop Without Backoff
-**What:** `sleep(1); $response = $this->client->messages->create(...);` inline in the while loop
-**Why bad:** Couples retry logic to loop iteration count; makes thrashing detection timing-sensitive; untestable
-**Instead:** Isolated `AnthropicApiClient::createWithRetry()` that is independently testable
+**Phase 1 — LlmClient contracts + AnthropicApiClient normalization**
 
-### Anti-Pattern 2: Caching the Last Message in the Conversation
-**What:** Placing `cache_control` on `$messages[count($messages)-1]` to cache recent context
-**Why bad:** Cache is invalidated every round because the last message changes. Produces cache misses on every call, paying cache creation cost with zero cache read benefit.
-**Instead:** Cache only the static system prompt prefix
+Introduce `LlmClient`, `LlmResponse`, `LlmUsage`. Adapt `AnthropicApiClient` to implement
+`LlmClient` (wrap native SDK response in `LlmResponse`/`LlmUsage`). Move
+`CacheControlEphemeral` wrapping into `AnthropicApiClient::messages()`. Adapt the three
+Claude services to accept `LlmClient` and use array-access on response content.
 
-### Anti-Pattern 3: Using Monolog or a PSR-3 Logger
-**What:** Adding a full logging framework for a personal CLI tool
-**Why bad:** Adds a dependency, requires configuration, produces log files in non-obvious locations, and adds conceptual overhead inconsistent with the "no infrastructure" philosophy
-**Instead:** `RunLogger` writing JSON Lines to a single file in `~/.copland/logs/`
+Zero behavior change. All existing tests pass. This is the prerequisite for everything
+else in the LLM track.
 
-### Anti-Pattern 4: Budget Enforcement in RunOrchestratorService
-**What:** Checking budget at the orchestrator level between stages
-**Why bad:** The orchestrator doesn't have a loop — by the time budget is checked after executor returns, the money is already spent
-**Instead:** Budget check inside the executor's while loop, after each API response
+**Phase 2 — OpenAiCompatClient + LlmClientFactory + config**
 
-### Anti-Pattern 5: Separating Retry Config From GlobalConfig
-**What:** Hardcoding retry attempts and backoff in `AnthropicApiClient`
-**Why bad:** Cannot tune behavior without code changes; makes overnight config adjustments impossible
-**Instead:** Read retry config from GlobalConfig with sensible defaults
+Implement `OpenAiCompatClient` (Guzzle-based, normalizes OpenAI-compat responses to
+`LlmResponse`). Extract retry into `RetryingLlmClient` decorator. Implement
+`LlmClientFactory`. Extend `GlobalConfig` with `llmProvider()`, `openRouterApiKey()`,
+`ollamaBaseUrl()`. Extend `RepoConfig` with optional provider + model overrides. Wire
+`RunCommand` and `PlanCommand` through `LlmClientFactory`.
+
+Update `AnthropicCostEstimator` fallback to `[0.0, 0.0]` for unrecognized model strings.
+
+**Phase 3 — TaskSource interface + GitHubTaskSource refactor**
+
+Introduce `TaskSource`. Implement `GitHubTaskSource` wrapping existing `GitHubService`
+behavior. Update `RunOrchestratorService` to accept `TaskSource` alongside `GitHubService`
+(PR + label ops stay on `GitHubService`). Route task fetch and task-side feedback through
+`TaskSource`. Wire `RunCommand` to inject `GitHubTaskSource`.
+
+Behavior is identical to current. All existing tests continue passing. This is the
+structural prerequisite for Phase 4.
+
+**Phase 4 — AsanaService + AsanaTaskSource + config**
+
+Implement `AsanaService` (Guzzle, PAT auth, `getTasks`, `addStory`). Implement
+`AsanaTaskSource` with GID map. Extend `GlobalConfig` with `asanaPat()`, `asanaProjects()`,
+`asanaProjectGidForRepo()`. Extend `RepoConfig` with `taskSource()`. Implement
+`TaskSourceFactory`. Wire `RunCommand` to use `TaskSourceFactory`.
+
+Update `IssuePrefilterService` to skip the `hasOpenLinkedPr` check when task source is
+not GitHub (inject a bool flag or pass task source type).
+
+**Phase 5 — Tests**
+
+Unit tests for: `OpenAiCompatClient` response normalization and retry, `LlmClientFactory`
+provider selection logic, `AsanaService` with mock Guzzle, `AsanaTaskSource` lifecycle
+(getTasks normalization, onSuccess story, onFailure story), `TaskSourceFactory` resolution
+logic, `RunOrchestratorService` with injected `TaskSource` mock.
+
+Note: Phases 1–4 should each include their own unit tests inline. Phase 5 covers
+integration-style tests and any gaps.
+
+**Rationale for this order:**
+- Phase 1 is the seam that makes Phases 2-4 safe without breaking existing behavior.
+- Phase 2 ships Ollama/OpenRouter without touching the task source layer at all.
+- Phase 3 is a structural refactor that validates correctness before any new behavior.
+- Phase 4 is additive only — no existing code path is modified by it.
 
 ---
 
-## Scalability Considerations
+## Files Changed vs New
 
-| Concern | Now (personal cron) | At 10 repos/night | Notes |
-|---------|---------------------|-------------------|-------|
-| Log file size | ~1KB/run, trivial | ~3.6MB/year | Single append file; no rotation needed |
-| Cache TTL | 5-min ephemeral; 12 rounds in ~60s | Same | Cache stays hot through executor loop |
-| Retry delays | Max 7s total (1+2+4) | Same | Does not affect cron schedule at this scale |
-| Budget tracking | Per-run, in-memory | Per-run, in-memory | No cross-run budget needed at this scale |
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `app/Contracts/LlmClient.php` | Interface for all LLM providers |
+| `app/Contracts/LlmResponse.php` | Normalized response value object |
+| `app/Contracts/LlmUsage.php` | Normalized usage value object |
+| `app/Contracts/TaskSource.php` | Interface for task sources |
+| `app/Support/OpenAiCompatClient.php` | OpenAI-compat HTTP client (Ollama + OpenRouter) |
+| `app/Support/RetryingLlmClient.php` | Retry/backoff decorator for any LlmClient |
+| `app/Support/LlmClientFactory.php` | Resolves provider config → concrete LlmClient |
+| `app/Support/TaskSourceFactory.php` | Resolves task source config → concrete TaskSource |
+| `app/Services/GitHubTaskSource.php` | Wraps GitHubService as TaskSource |
+| `app/Services/AsanaService.php` | Asana REST API client (tasks + stories) |
+| `app/Services/AsanaTaskSource.php` | Wraps AsanaService as TaskSource |
+
+### Modified Files
+
+| File | Changes |
+|------|---------|
+| `app/Support/AnthropicApiClient.php` | Implement `LlmClient`; normalize SDK response to `LlmResponse`/`LlmUsage`; absorb `CacheControlEphemeral` wrapping; strip retry into `RetryingLlmClient` |
+| `app/Services/ClaudeSelectorService.php` | Type hint `LlmClient`; array-access response content |
+| `app/Services/ClaudePlannerService.php` | Type hint `LlmClient`; array-access response content |
+| `app/Services/ClaudeExecutorService.php` | Type hint `LlmClient`; array-access response content and tool blocks; remove `CacheControlEphemeral`/`TextBlockParam` imports; pass system as string |
+| `app/Services/RunOrchestratorService.php` | Add `TaskSource $taskSource` constructor param; route `getTasks()`, `onSuccess()`, `onFailure()` through task source; keep `GitHubService` for PR and label ops |
+| `app/Services/IssuePrefilterService.php` | Skip `hasOpenLinkedPr` check for non-GitHub task sources (bool flag or task source type param) |
+| `app/Config/GlobalConfig.php` | Add `llmProvider()`, `openRouterApiKey()`, `ollamaBaseUrl()`, `asanaPat()`, `asanaProjects()`, `asanaProjectGidForRepo()`; update default YAML template; keep `claudeApiKey()` as alias for `anthropicApiKey()` |
+| `app/Config/RepoConfig.php` | Add `llmProvider()`, `ollamaBaseUrl()`, `taskSource()`, per-role model getters |
+| `app/Commands/RunCommand.php` | Replace direct `new AnthropicApiClient(new Client(...))` with `LlmClientFactory::make()`; inject `TaskSourceFactory`-resolved source into orchestrator |
+| `app/Commands/PlanCommand.php` | Same LlmClientFactory wiring change |
+| `app/Support/AnthropicCostEstimator.php` | Change unknown-model fallback from `[3.0, 15.0]` to `[0.0, 0.0]`; add display note for zero-cost models |
+
+### Unchanged Files
+
+`ExecutorPolicy`, `ExecutorRunState`, `GitService`, `WorkspaceService`,
+`VerificationService`, `PlanValidatorService`, all `app/Data/` classes,
+`AnthropicMessageSerializer`, `FileMutationHelper`, `RunLogStore`, `PlanArtifactStore`,
+`RunProgressSnapshot`, `ExecutorProgressFormatter`.
 
 ---
 
-## Confidence Assessment
+## Key Integration Constraints
 
-| Topic | Confidence | Basis |
-|-------|------------|-------|
-| Anthropic cache_control placement (system prompt only) | HIGH | Well-documented in Anthropic docs as of Aug 2025; directly observable from SDK usage |
-| Cache TTL is 5 minutes | HIGH | Stable Anthropic documentation |
-| cache_creation / cache_read tokens in response.usage | HIGH | Confirmed in SDK response shape |
-| Tool definitions cacheable alongside system prompt | MEDIUM | Documented feature but SDK support varies; verify before implementing |
-| Retry HTTP status codes (429, 5xx) | HIGH | Standard HTTP semantics; confirmed in Anthropic rate limit docs |
-| JSON Lines as structured log format | HIGH | Industry standard for machine-readable append logs |
-| Monolog overkill for CLI tool | MEDIUM | Judgment call; reasonable engineers differ |
-| Budget enforcement placement in executor loop | HIGH | Direct consequence of where cost accumulates in the code |
+**Prompt caching with non-Anthropic providers.** The `CacheControlEphemeral` annotation
+has no standard equivalent on OpenAI-compat endpoints. Moving the wrapping into
+`AnthropicApiClient` means Ollama and OpenRouter simply receive a plain string for
+`system` and never see the annotation. No behavior change for them; caching continues to
+work for Anthropic as before.
 
----
+**Tool support on Ollama.** The executor requires tool/function calling. Ollama models
+without function calling capability will return text responses without `tool_calls`, which
+causes the executor loop to treat every response as `end_turn` with no progress. Document
+supported models in config. Consider a startup check that makes a minimal tool-call test
+request and surfaces a clear error rather than a silent infinite loop.
 
-## Open Questions
+**Asana GID as task number.** The `number` field in the normalized task array is used by
+`SelectionResult::selectedIssueNumber` (an `int`). Asana GIDs are large but fit in 64-bit
+PHP int. `AsanaTaskSource` stores GIDs as strings in `gidMap` and exposes a sequential
+1-based index as `number`. The selector sees numbers like `1, 2, 3`; `AsanaTaskSource`
+maps back to `gidMap[1]` for API calls.
 
-1. **Does the current `anthropic-sdk-php` version support passing `cache_control` inside
-   the `tools:` array?** The caching docs describe it for system and messages; tool
-   definition caching may require a newer SDK. Verify against `composer.json` before
-   implementing.
+**Cost display for Ollama.** Ollama is free (local). `AnthropicCostEstimator` with
+`[0.0, 0.0]` rates will show `$0.0000 est.` which is accurate. Token counts are still
+reported for awareness of model load.
 
-2. **Does cron on macOS inherit `HOME` from the launch environment?** `CONCERNS.md`
-   documents that `$_SERVER['HOME']` may not be set in cron/systemd. `RunLogger` will
-   write to `~/.copland/logs/` and will fail the same way if HOME is not resolved.
-   The HOME resolution bug (CONCERNS.md Bug #2) should be fixed before or alongside
-   RunLogger to avoid silent log loss.
-
-3. **Should `AnthropicApiClient` surface retry events to the `RunLogger`?** If the logger
-   is constructed before the API client, yes — pass the logger into the client so retries
-   are captured in the structured log. If the logger is not yet in place when the client
-   is built (e.g., Phase A before Phase B), fall back to `error_log()`.
-
-4. **Is the 5-minute cache TTL sufficient for very slow executor runs?** At 12 rounds
-   with complex tool calls and slow network, a run could exceed 5 minutes. In that case,
-   cache TTL expiry causes a cache miss on later rounds, which would show up as unexpected
-   `cache_creation_input_tokens` charges in later rounds. Monitor during first runs with
-   caching enabled.
+**Backward compatibility.** The `claude_api_key` field in existing `~/.copland.yml` files
+must continue to work. `GlobalConfig::anthropicApiKey()` reads from `llm.anthropic_api_key`
+first, then falls back to the top-level `claude_api_key` field. Existing users' configs
+work without modification.
