@@ -168,6 +168,33 @@ YAML;
         return $this->data['llm'] ?? [];
     }
 
+    public function asanaToken(): string
+    {
+        return $this->data['asana_token'] ?? '';
+    }
+
+    public function asanaProjectForRepo(string $slug): ?string
+    {
+        foreach ($this->repos() as $repo) {
+            if (is_array($repo) && ($repo['slug'] ?? '') === $slug) {
+                return isset($repo['asana_project']) ? (string) $repo['asana_project'] : null;
+            }
+        }
+
+        return null;
+    }
+
+    public function asanaFiltersForRepo(string $slug): array
+    {
+        foreach ($this->repos() as $repo) {
+            if (is_array($repo) && ($repo['slug'] ?? '') === $slug) {
+                return $repo['asana_filters'] ?? [];
+            }
+        }
+
+        return [];
+    }
+
     public function retryMaxAttempts(): int
     {
         return $this->data['api']['retry']['max_attempts'] ?? 3;
