@@ -23,3 +23,42 @@ it('bootstraps a default repo config file when missing', function () {
     expect(file_get_contents($path))->not->toContain('worktree_base');
     expect(file_get_contents($path))->toContain('repo_summary: ""');
 });
+
+it('returns github as default taskSource when task_source is absent', function () {
+    $repoPath = sys_get_temp_dir().'/copland-repo-config-tasksource-default-'.uniqid();
+    mkdir($repoPath, 0755, true);
+
+    $config = new RepoConfig($repoPath);
+
+    expect($config->taskSource())->toBe('github');
+});
+
+it('returns asana when task_source is asana in repo config', function () {
+    $repoPath = sys_get_temp_dir().'/copland-repo-config-tasksource-asana-'.uniqid();
+    mkdir($repoPath, 0755, true);
+
+    file_put_contents($repoPath.'/.copland.yml', <<<'YAML'
+base_branch: main
+task_source: asana
+YAML
+    );
+
+    $config = new RepoConfig($repoPath);
+
+    expect($config->taskSource())->toBe('asana');
+});
+
+it('returns github when task_source is explicitly github in repo config', function () {
+    $repoPath = sys_get_temp_dir().'/copland-repo-config-tasksource-github-'.uniqid();
+    mkdir($repoPath, 0755, true);
+
+    file_put_contents($repoPath.'/.copland.yml', <<<'YAML'
+base_branch: main
+task_source: github
+YAML
+    );
+
+    $config = new RepoConfig($repoPath);
+
+    expect($config->taskSource())->toBe('github');
+});
