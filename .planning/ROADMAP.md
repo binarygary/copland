@@ -56,7 +56,7 @@ Plans:
   4. All existing orchestrator and GitHub service tests pass green with no modifications
 **Plans**: 3 plans
 Plans:
-- [ ] 16-01-PLAN.md — Create TaskSource interface and GitHubTaskSource delegation wrapper
+- [x] 16-01-PLAN.md — Create TaskSource interface and GitHubTaskSource delegation wrapper
 - [ ] 16-02-PLAN.md — Wire TaskSource into RunOrchestratorService and AppServiceProvider
 - [ ] 16-03-PLAN.md — Update RunOrchestratorServiceTest, create GitHubTaskSourceTest
 
@@ -78,7 +78,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 14. LlmClient Contracts | 1/1 | Complete   | 2026-04-08 |
 | 15. Provider Implementations | 0/3 | Complete    | 2026-04-08 |
-| 16. TaskSource Extraction | 0/3 | Not started | - |
+| 16. TaskSource Extraction | 1/3 | In Progress|  |
 | 17. Asana Integration | 0/? | Not started | - |
 
 ---
