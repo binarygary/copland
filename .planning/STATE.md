@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Multi-Provider & Asana Integration
-status: verifying
-stopped_at: Completed 16-tasksource-extraction 16-03-PLAN.md
-last_updated: "2026-04-08T18:16:53.954Z"
+status: executing
+stopped_at: Completed 17-asana-integration 17-02-PLAN.md
+last_updated: "2026-04-08T19:49:16.580Z"
 last_activity: 2026-04-08
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 12
+  completed_plans: 8
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** A reliable overnight agent that opens merge-ready PRs without intervention.
-**Current focus:** Phase 16 — tasksource-extraction
+**Current focus:** Phase 17 — asana-integration
 
 ## Current Position
 
-Phase: 17
-Plan: Not started
-Status: Phase complete — ready for verification
+Phase: 17 (asana-integration) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
 Last activity: 2026-04-08
 
 Progress: [__________] 0%
@@ -68,6 +68,7 @@ Progress: [__________] 0%
 | Phase 16-tasksource-extraction P01 | 1 | 2 tasks | 2 files |
 | Phase 16-tasksource-extraction P02 | 8 | 2 tasks | 3 files |
 | Phase 16-tasksource-extraction P03 | 15 | 2 tasks | 2 files |
+| Phase 17-asana-integration P02 | 8 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -86,6 +87,7 @@ Recent decisions affecting current work:
 - [Phase 16-tasksource-extraction]: TaskSource interface uses string|int taskId for Asana GID compatibility; GitHubService unchanged behind GitHubTaskSource delegation wrapper
 - [Phase 16-tasksource-extraction]: RunOrchestratorServiceTest updated to mock TaskSource interface instead of GitHubService — constructor change required test factory update for all 6 tests
 - [Phase 16-tasksource-extraction]: makePlan() global function collision between orchestrator and executor tests fixed by renaming to makeOrchestratorPlan() — Pest loads all test files into same process scope
+- [Phase 17-asana-integration]: configuredRepos() unchanged — Asana keys accessed separately via slug-based getters to preserve existing normalization contract
 
 ### Pending Todos
 
@@ -99,6 +101,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-08T18:15:02.213Z
-Stopped at: Completed 16-tasksource-extraction 16-03-PLAN.md
+Last session: 2026-04-08T19:49:16.578Z
+Stopped at: Completed 17-asana-integration 17-02-PLAN.md
 Resume file: None

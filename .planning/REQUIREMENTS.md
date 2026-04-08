@@ -29,11 +29,11 @@
 
 ### Asana (ASANA)
 
-- [ ] **ASANA-01**: User can map Asana projects to repos in `~/.copland.yml`
+- [x] **ASANA-01**: User can map Asana projects to repos in `~/.copland.yml`
 - [ ] **ASANA-02**: Copland fetches open tasks from a configured Asana project (same selection pipeline as GitHub Issues)
 - [ ] **ASANA-03**: User can filter which Asana tasks Copland picks up by tag or section name (configured in `~/.copland.yml`)
 - [ ] **ASANA-04**: Copland adds a comment to the Asana task with the GitHub PR link when a PR is opened
-- [ ] **ASANA-05**: User can configure Asana as the task source per repo (alongside GitHub Issues)
+- [x] **ASANA-05**: User can configure Asana as the task source per repo (alongside GitHub Issues)
 
 ---
 
@@ -68,8 +68,8 @@
 | OLLAMA-03 | Phase 15 | Pending |
 | OPENR-01 | Phase 15 | Pending |
 | OPENR-02 | Phase 15 | Pending |
-| ASANA-01 | Phase 17 | Pending |
+| ASANA-01 | Phase 17 | Complete |
 | ASANA-02 | Phase 17 | Pending |
 | ASANA-03 | Phase 17 | Pending |
 | ASANA-04 | Phase 17 | Pending |
-| ASANA-05 | Phase 17 | Pending |
+| ASANA-05 | Phase 17 | Complete |
