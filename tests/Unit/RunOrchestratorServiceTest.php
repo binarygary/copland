@@ -29,7 +29,7 @@ it('completes the happy path and opens a draft PR', function () {
     $stores = makeStores();
     $issue = makeIssue();
     $selection = new SelectionResult('accept', 42, 'looks good', [], usage('selector'));
-    $plan = makePlan(usage: usage('planner'));
+    $plan = makeOrchestratorPlan(usage: usage('planner'));
     $execution = executionResult(success: true, summary: 'Implemented successfully');
     $verification = new VerificationResult(true, []);
 
@@ -135,7 +135,7 @@ it('returns skipped when the planner declines the selected issue', function () {
     $selector->shouldReceive('selectTask')->once()->andReturn(new SelectionResult('accept', 42, 'ok', [], usage('selector')));
 
     $planner = \Mockery::mock(ClaudePlannerService::class);
-    $planner->shouldReceive('planTask')->once()->andReturn(makePlan(decision: 'decline', declineReason: 'too risky', usage: usage('planner')));
+    $planner->shouldReceive('planTask')->once()->andReturn(makeOrchestratorPlan(decision: 'decline', declineReason: 'too risky', usage: usage('planner')));
 
     $service = makeOrchestrator(
         taskSource: $taskSource,
@@ -157,7 +157,7 @@ it('returns skipped when the planner declines the selected issue', function () {
 it('returns failed when validation fails after saving the plan artifact', function () {
     $stores = makeStores();
     $issue = makeIssue();
-    $plan = makePlan(usage: usage('planner'));
+    $plan = makeOrchestratorPlan(usage: usage('planner'));
 
     $taskSource = \Mockery::mock(TaskSource::class);
     $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
@@ -195,7 +195,7 @@ it('returns failed when validation fails after saving the plan artifact', functi
 it('returns failed immediately when the executor reports failure', function () {
     $stores = makeStores();
     $issue = makeIssue();
-    $plan = makePlan(usage: usage('planner'));
+    $plan = makeOrchestratorPlan(usage: usage('planner'));
     $execution = executionResult(success: false, summary: 'executor blew up');
 
     $taskSource = \Mockery::mock(TaskSource::class);
@@ -252,7 +252,7 @@ it('returns failed immediately when the executor reports failure', function () {
 it('returns failed when verification fails after execution', function () {
     $stores = makeStores();
     $issue = makeIssue();
-    $plan = makePlan(usage: usage('planner'));
+    $plan = makeOrchestratorPlan(usage: usage('planner'));
     $execution = executionResult(success: true, summary: 'implemented');
 
     $taskSource = \Mockery::mock(TaskSource::class);
@@ -304,7 +304,7 @@ it('returns failed when verification fails after execution', function () {
 it('cleans up the workspace and writes a partial run log when the executor throws', function () {
     $stores = makeStores();
     $issue = makeIssue();
-    $plan = makePlan(usage: usage('planner'));
+    $plan = makeOrchestratorPlan(usage: usage('planner'));
     $snapshot = new RunProgressSnapshot;
 
     $taskSource = \Mockery::mock(TaskSource::class);
@@ -421,7 +421,7 @@ function makeIssue(): array
     ];
 }
 
-function makePlan(
+function makeOrchestratorPlan(
     string $decision = 'accept',
     ?string $declineReason = null,
     ?ModelUsage $usage = null,
