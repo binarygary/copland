@@ -14,6 +14,7 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 - Supports retry-safe Claude calls, executor safety policies, structured `runs.jsonl` logging, prompt caching, cache-aware cost reporting, multi-repo runs, and macOS launchd setup.
 - Has direct automated coverage for the Anthropic retry wrapper, executor service, and orchestrator service.
 - Has onboarding docs for installation, repo policy setup, overnight automation, and morning review.
+- Phase 15 complete — provider implementations: `OpenAiCompatClient` (Ollama/OpenRouter), `LlmClientFactory` (D-05 per-stage resolution), `LlmResponseNormalizer`, `ToolSchemaTranslator`, `llmConfig()` getters, and Ollama reachability probe wired into `RunCommand`.
 
 ## Current Milestone: v1.1 Multi-Provider & Asana Integration
 
@@ -106,4 +107,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-08 — Milestone v1.1 started*
+*Last updated: 2026-04-08 — Phase 15 provider implementations complete*
