@@ -74,8 +74,8 @@ Plans:
 Plans:
 - [x] 17-01-PLAN.md — Rename selectedIssueNumber → selectedTaskId, widen type to string|int|null, fix RunCommand TaskSource wiring
 - [x] 17-02-PLAN.md — Add Asana config getters to GlobalConfig and taskSource() to RepoConfig
-- [ ] 17-03-PLAN.md — Create AsanaService (Guzzle HTTP client, fetch/filter/comment/tag removal)
-- [ ] 17-04-PLAN.md — Create AsanaTaskSource, wire conditional TaskSource into RunCommand
+- [x] 17-03-PLAN.md — Create AsanaService (Guzzle HTTP client, fetch/filter/comment/tag removal)
+- [x] 17-04-PLAN.md — Create AsanaTaskSource, wire conditional TaskSource into RunCommand
 - [ ] 17-05-PLAN.md — Unit tests for AsanaService, AsanaTaskSource, GlobalConfig/RepoConfig Asana getters
 
 ### Progress Table
@@ -85,7 +85,7 @@ Plans:
 | 14. LlmClient Contracts | 1/1 | Complete   | 2026-04-08 |
 | 15. Provider Implementations | 0/3 | Complete    | 2026-04-08 |
 | 16. TaskSource Extraction | 3/3 | Complete    | 2026-04-08 |
-| 17. Asana Integration | 2/5 | In Progress|  |
+| 17. Asana Integration | 4/5 | In Progress|  |
 
 ---
 
