@@ -13,7 +13,7 @@
 
 - [x] **Phase 14: LlmClient Contracts** — Introduce `LlmClient` interface, normalize `AnthropicApiClient` to implement it; no behavior change (completed 2026-04-08)
 - [x] **Phase 15: Provider Implementations** — `OpenAiCompatClient`, factory, and config wiring for Ollama and OpenRouter (completed 2026-04-08)
-- [ ] **Phase 16: TaskSource Extraction** — Extract `TaskSource` interface, refactor `GitHubService` into `GitHubTaskSource`; structural refactor, no behavior change
+- [x] **Phase 16: TaskSource Extraction** — Extract `TaskSource` interface, refactor `GitHubService` into `GitHubTaskSource`; structural refactor, no behavior change (completed 2026-04-08)
 - [ ] **Phase 17: Asana Integration** — `AsanaService`, `AsanaTaskSource`, config mapping, and PR link comment-back
 
 ### Phase Details
@@ -58,7 +58,7 @@ Plans:
 Plans:
 - [x] 16-01-PLAN.md — Create TaskSource interface and GitHubTaskSource delegation wrapper
 - [x] 16-02-PLAN.md — Wire TaskSource into RunOrchestratorService and AppServiceProvider
-- [ ] 16-03-PLAN.md — Update RunOrchestratorServiceTest, create GitHubTaskSourceTest
+- [x] 16-03-PLAN.md — Update RunOrchestratorServiceTest, create GitHubTaskSourceTest
 
 #### Phase 17: Asana Integration
 **Goal**: Users can configure Asana projects as a task source per repo; Copland fetches open Asana tasks, runs the same code pipeline, and posts the resulting PR link back as an Asana comment
@@ -78,7 +78,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 14. LlmClient Contracts | 1/1 | Complete   | 2026-04-08 |
 | 15. Provider Implementations | 0/3 | Complete    | 2026-04-08 |
-| 16. TaskSource Extraction | 2/3 | In Progress|  |
+| 16. TaskSource Extraction | 3/3 | Complete   | 2026-04-08 |
 | 17. Asana Integration | 0/? | Not started | - |
 
 ---
