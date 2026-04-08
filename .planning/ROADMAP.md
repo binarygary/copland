@@ -39,7 +39,11 @@
   3. Copland probes Ollama reachability (`GET /api/tags`) before entering the orchestration loop and exits with a clear error message if Ollama is unreachable
   4. Copland prints a startup warning when the configured Ollama model is not on the known tool-capable model list
   5. OpenRouter requests include `HTTP-Referer` and `X-Title` attribution headers; Anthropic `cache_control` blocks are stripped before sending to non-Anthropic providers
-**Plans**: TBD
+**Plans**: 3 plans
+Plans:
+- [ ] 15-01-PLAN.md — Install openai-php/client, LlmResponseNormalizer, ToolSchemaTranslator, config getters, stopReason normalization
+- [ ] 15-02-PLAN.md — OpenAiCompatClient, LlmClientFactory, AppServiceProvider wiring
+- [ ] 15-03-PLAN.md — RunCommand factory wiring, Ollama probe, model capability warning
 
 #### Phase 16: TaskSource Extraction
 **Goal**: `RunOrchestratorService` fetches tasks through a `TaskSource` interface rather than calling `GitHubService` directly; existing GitHub behavior and all tests are unchanged
@@ -69,7 +73,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 14. LlmClient Contracts | 1/1 | Complete   | 2026-04-08 |
-| 15. Provider Implementations | 0/? | Not started | - |
+| 15. Provider Implementations | 0/3 | Not started | - |
 | 16. TaskSource Extraction | 0/? | Not started | - |
 | 17. Asana Integration | 0/? | Not started | - |
 
