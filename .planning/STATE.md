@@ -5,9 +5,9 @@ milestone_name: Multi-Provider & Asana Integration
 status: active
 stopped_at: ""
 last_updated: "2026-04-08T00:00:00Z"
-last_activity: 2026-04-08 -- Milestone v1.1 started
+last_activity: 2026-04-08 -- Roadmap created for v1.1 (Phases 14-17)
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -18,19 +18,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-03)
+See: .planning/PROJECT.md (updated 2026-04-08)
 
 **Core value:** A reliable overnight agent that opens merge-ready PRs without intervention.
-**Current focus:** Start next milestone
+**Current focus:** Phase 14 — LlmClient Contracts
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 14 — LlmClient Contracts
 Plan: —
-Status: Defining requirements for v1.1
-Last activity: 2026-04-08 — Milestone v1.1 started
+Status: Roadmap defined, ready to begin Phase 14
+Last activity: 2026-04-08 — v1.1 roadmap created (4 phases, 15 requirements mapped)
 
-Progress: [██████████] 100%
+Progress: [__________] 0%
 
 ## Performance Metrics
 
@@ -40,7 +40,7 @@ Progress: [██████████] 100%
 - Average duration: —
 - Total execution time: 0 hours
 
-**By Phase:**
+**By Phase (v1.0 history):**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
@@ -61,7 +61,7 @@ Progress: [██████████] 100%
 **Recent Trend:**
 
 - Last 5 plans: 5 completed
-- Trend: v1.0 archived after gap-closure completion
+- Trend: v1.0 archived; v1.1 roadmap defined
 
 *Updated after each plan completion*
 
@@ -72,17 +72,10 @@ Progress: [██████████] 100%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- Roadmap: Retry wrapper introduced as AnthropicApiClient — centralizes retry logic across all three Claude services
-- Roadmap: HOME resolution fix (posix_getpwuid fallback) is a prerequisite for Phase 3 log path resolution; addressed in Phase 1
-- Roadmap: Prompt caching split into Phase 4 (add cache_control) and Phase 5 (update cost model) — cost model depends on caching being in place first
-- Roadmap: Testing phases (8-10) deferred until core changes stabilize so interfaces being tested are final
-- Phase 1: Commands now construct a shared AnthropicApiClient using retry settings from ~/.copland.yml
-- Phase 2: Executor read_file is now capped per repo with an explicit truncation footer, defaulting to 300 lines
-- Phase 2: Structured blocked_write_paths now flows planner -> validator -> executor -> stored artifacts, replacing fragile write guardrail text matching
-- Phase 3: Run logging should be append-only JSONL under ~/.copland/logs/runs.jsonl and written from orchestrator finalization
-- Phase 3: Existing CLI cost output in RunCommand is already the baseline to preserve, not redesign
-- Phase 3: Plan decomposition is storage primitive + CLI regression lock-in first, then normal and partial orchestrator logging in wave 2
-- Phase 3: `RunLogStore` owns JSONL persistence and `RunOrchestratorService` is the single source of truth for both normal and partial run records
+- Roadmap (v1.1): Phase 16 (TaskSource extraction) kept as a standalone refactor phase with no direct requirements — separating structural refactor from Asana feature delivery reduces risk and keeps each phase individually verifiable
+- Roadmap (v1.1): `openai-php/client` covers both Ollama and OpenRouter behind one `OpenAiCompatClient` — no second HTTP client package needed
+- Roadmap (v1.1): Anthropic `cache_control` blocks must be stripped before sending to non-Anthropic providers; normalize `stopReason` in `LlmResponse` (`end_turn` → `stop` parity) to prevent executor loop exhaustion on OpenAI-compat providers
+- Roadmap (v1.1): Asana GIDs handled as strings throughout pipeline to prevent type errors (SelectionResult.selectedIssueNumber widening required)
 
 ### Pending Todos
 
@@ -96,6 +89,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-03T18:25:24Z
-Stopped at: v1.0 archived
-Resume file: .planning/PROJECT.md
+Last session: 2026-04-08T00:00:00Z
+Stopped at: v1.1 roadmap created
+Resume file: .planning/ROADMAP.md

@@ -56,22 +56,20 @@
 
 ## Traceability
 
-*Filled by roadmapper — maps REQ-IDs to phases.*
-
-| REQ-ID | Phase |
-|--------|-------|
-| PROV-01 | — |
-| PROV-02 | — |
-| PROV-03 | — |
-| PROV-04 | — |
-| PROV-05 | — |
-| OLLAMA-01 | — |
-| OLLAMA-02 | — |
-| OLLAMA-03 | — |
-| OPENR-01 | — |
-| OPENR-02 | — |
-| ASANA-01 | — |
-| ASANA-02 | — |
-| ASANA-03 | — |
-| ASANA-04 | — |
-| ASANA-05 | — |
+| REQ-ID | Phase | Status |
+|--------|-------|--------|
+| PROV-01 | Phase 14 | Pending |
+| PROV-02 | Phase 14 | Pending |
+| PROV-03 | Phase 15 | Pending |
+| PROV-04 | Phase 15 | Pending |
+| PROV-05 | Phase 15 | Pending |
+| OLLAMA-01 | Phase 15 | Pending |
+| OLLAMA-02 | Phase 15 | Pending |
+| OLLAMA-03 | Phase 15 | Pending |
+| OPENR-01 | Phase 15 | Pending |
+| OPENR-02 | Phase 15 | Pending |
+| ASANA-01 | Phase 17 | Pending |
+| ASANA-02 | Phase 17 | Pending |
+| ASANA-03 | Phase 17 | Pending |
+| ASANA-04 | Phase 17 | Pending |
+| ASANA-05 | Phase 17 | Pending |
