@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Contracts\TaskSource;
 use App\Data\RunResult;
 use App\Support\AnthropicCostEstimator;
 use App\Support\PlanArtifactStore;
@@ -16,7 +17,7 @@ class RunOrchestratorService
     private $progressCallback = null;
 
     public function __construct(
-        private GitHubService $github,
+        private TaskSource $taskSource,
         private IssuePrefilterService $prefilter,
         private ClaudeSelectorService $selector,
         private ClaudePlannerService $planner,
@@ -46,7 +47,7 @@ class RunOrchestratorService
         try {
             // Step 1: Fetch and prefilter issues
             $this->pushLog("[1/8] Fetching issues for {$repo}");
-            $issues = $this->github->getIssues($repo, $repoProfile['required_labels'] ?? ['agent-ready']);
+            $issues = $this->taskSource->fetchTasks($repo, $repoProfile['required_labels'] ?? ['agent-ready']);
             $prefiltered = $this->prefilter->filter($issues);
             $this->pushLog('      '.count($prefiltered->accepted).' accepted, '.count($prefiltered->rejected).' rejected after prefilter');
 
@@ -183,7 +184,7 @@ class RunOrchestratorService
                 : "      Execution failed: {$executionResult->summary}");
 
             if (! $executionResult->success) {
-                $this->github->commentOnIssue(
+                $this->taskSource->addComment(
                     $repo,
                     $selectedIssue['number'],
                     "❌ Agent run failed.\n\n**Reason:** {$executionResult->summary}"
@@ -217,7 +218,7 @@ class RunOrchestratorService
                 $this->pushLog("      Verification failed: {$reason}");
 
                 // Step 8: Comment failure on issue
-                $this->github->commentOnIssue(
+                $this->taskSource->addComment(
                     $repo,
                     $selectedIssue['number'],
                     "❌ Agent run failed.\n\n**Reason:** {$reason}"
@@ -251,7 +252,7 @@ class RunOrchestratorService
             $this->pushLog("      Pushed branch {$plan->branchName}");
 
             // Step 11: Create draft PR
-            $pr = $this->github->createDraftPr(
+            $pr = $this->taskSource->openDraftPr(
                 $repo,
                 $plan->branchName,
                 $plan->prTitle,
@@ -262,12 +263,12 @@ class RunOrchestratorService
             $this->pushLog("      Draft PR opened: {$prUrl}");
 
             foreach ($repoProfile['required_labels'] ?? ['agent-ready'] as $label) {
-                $this->github->removeLabel($repo, $selectedIssue['number'], $label);
+                $this->taskSource->removeTag($repo, $selectedIssue['number'], $label);
                 $this->pushLog("      Removed issue label {$label}");
             }
 
             // Step 12: Comment success on issue
-            $this->github->commentOnIssue(
+            $this->taskSource->addComment(
                 $repo,
                 $selectedIssue['number'],
                 "✅ Agent run complete.\n\n**PR:** {$prUrl}\n**Branch:** `{$plan->branchName}`\n\n{$executionResult->summary}"
