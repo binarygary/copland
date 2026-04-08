@@ -101,13 +101,11 @@ class ClaudeExecutorService
                 systemBlocks: $system,
             );
 
-            if ($response->usage !== null) {
-                $totalInputTokens += $response->usage->inputTokens;
-                $totalOutputTokens += $response->usage->outputTokens;
-                $totalCacheWriteTokens += $response->usage->cacheWriteTokens;
-                $totalCacheReadTokens += $response->usage->cacheReadTokens;
-                $this->updateSnapshot($snapshot, $startTime, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens);
-            }
+            $totalInputTokens += $response->usage->inputTokens;
+            $totalOutputTokens += $response->usage->outputTokens;
+            $totalCacheWriteTokens += $response->usage->cacheWriteTokens;
+            $totalCacheReadTokens += $response->usage->cacheReadTokens;
+            $this->updateSnapshot($snapshot, $startTime, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens);
 
             $toolUses = 0;
             foreach ($response->content as $block) {
