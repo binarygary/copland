@@ -61,3 +61,15 @@ it('delegates removeTag to AsanaService::removeTag with taskId cast to string', 
     $source = new AsanaTaskSource($asana, $github);
     $source->removeTag('owner/repo', '1234567890123456', 'agent-ready');
 });
+
+it('casts integer taskId to string when calling addStory', function () {
+    $asana  = \Mockery::mock(AsanaService::class);
+    $github = \Mockery::mock(GitHubService::class);
+
+    $asana->shouldReceive('addStory')
+        ->once()
+        ->with('42', 'PR opened at https://github.com/owner/repo/pull/1');
+
+    $source = new AsanaTaskSource($asana, $github);
+    $source->addComment('owner/repo', 42, 'PR opened at https://github.com/owner/repo/pull/1');
+});
