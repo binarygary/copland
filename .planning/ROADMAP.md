@@ -45,7 +45,7 @@
 
 ### Phases
 
-- [ ] **Phase 18: Automate Command** — Rename `copland setup` to `copland automate`; keep `setup` as a deprecated alias
+- [x] **Phase 18: Automate Command** — Rename `copland setup` to `copland automate`; keep `setup` as a deprecated alias (completed 2026-04-09)
 - [ ] **Phase 19: Init Wizard** — Interactive `copland init` command guiding users from zero to a configured, running setup
 
 ### Phase Details
@@ -61,7 +61,7 @@
 **Plans**: 1 plan
 
 Plans:
-- [ ] 18-01-PLAN.md — Create AutomateCommand (full logic) + rewrite SetupCommand as hidden deprecated wrapper; update tests
+- [x] 18-01-PLAN.md — Create AutomateCommand (full logic) + rewrite SetupCommand as hidden deprecated wrapper; update tests
 
 ### Phase 19: Init Wizard
 **Goal**: A new user can run `copland init` and be guided through every configuration step interactively, ending with a verified, working Copland setup — no documentation required
@@ -81,5 +81,5 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 18. Automate Command | 0/1 | Not started | - |
+| 18. Automate Command | 1/1 | Complete   | 2026-04-09 |
 | 19. Init Wizard | 0/TBD | Not started | - |
