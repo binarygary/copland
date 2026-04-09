@@ -19,8 +19,8 @@
 
 ### Automate Command
 
-- [ ] **AUTO-01**: User can run `copland automate` to install the macOS LaunchAgent (current `copland setup` behavior)
-- [ ] **AUTO-02**: Running `copland setup` shows a deprecation notice and delegates to `copland automate`
+- [x] **AUTO-01**: User can run `copland automate` to install the macOS LaunchAgent (current `copland setup` behavior)
+- [x] **AUTO-02**: Running `copland setup` shows a deprecation notice and delegates to `copland automate`
 
 ---
 
@@ -49,5 +49,5 @@
 | INIT-05 | Phase 19 | Pending |
 | INIT-06 | Phase 19 | Pending |
 | INIT-07 | Phase 19 | Pending |
-| AUTO-01 | Phase 18 | Pending |
-| AUTO-02 | Phase 18 | Pending |
+| AUTO-01 | Phase 18 | Satisfied |
+| AUTO-02 | Phase 18 | Satisfied |
