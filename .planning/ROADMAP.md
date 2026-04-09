@@ -57,8 +57,11 @@
 **Success Criteria** (what must be TRUE):
   1. `copland automate` installs the macOS LaunchAgent with identical behavior to the current `copland setup`
   2. `copland setup` prints a clear deprecation notice ("setup has been renamed to automate") then delegates to `copland automate` and completes successfully
-  3. Both `copland automate` and `copland setup` appear correctly in `copland --help` output (automate as primary, setup noted as deprecated)
-**Plans**: TBD
+  3. `copland setup` is hidden from `copland --help` via `$hidden = true`; `copland automate` is the visible primary command
+**Plans**: 1 plan
+
+Plans:
+- [ ] 18-01-PLAN.md — Create AutomateCommand (full logic) + rewrite SetupCommand as hidden deprecated wrapper; update tests
 
 ### Phase 19: Init Wizard
 **Goal**: A new user can run `copland init` and be guided through every configuration step interactively, ending with a verified, working Copland setup — no documentation required
@@ -78,5 +81,5 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 18. Automate Command | 0/TBD | Not started | - |
+| 18. Automate Command | 0/1 | Not started | - |
 | 19. Init Wizard | 0/TBD | Not started | - |
