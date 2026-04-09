@@ -4,14 +4,14 @@ milestone: v1.2
 milestone_name: Onboarding
 status: active
 stopped_at: ~
-last_updated: "2026-04-08T00:00:00Z"
-last_activity: 2026-04-08
+last_updated: "2026-04-09T02:10:00Z"
+last_activity: 2026-04-09
 progress:
   total_phases: 2
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-09)
 
 **Core value:** A reliable overnight agent that opens merge-ready PRs without intervention.
-**Current focus:** Phase 18 — Automate Command (ready to plan)
+**Current focus:** Phase 19 — Init Wizard (ready to discuss/plan)
 
 ## Current Position
 
-Phase: 18 of 19 (Automate Command)
+Phase: 19 of 19 (Init Wizard)
 Plan: —
-Status: Ready to plan
-Last activity: 2026-04-08 — v1.2 roadmap defined
+Status: Phase 18 complete — ready to plan Phase 19
+Last activity: 2026-04-09 — Phase 18 (Automate Command) complete
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
