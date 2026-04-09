@@ -95,6 +95,14 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 | Asana GIDs handled as strings throughout pipeline | `SelectionResult`, `RunResult`, `RunProgressSnapshot` all declare `string\|int\|null $selectedTaskId` | ✓ v1.1 Phase 17 |
 | configuredRepos() unchanged — Asana keys accessed separately via slug-based getters | Preserves existing repo normalization contract; zero risk to GitHub repos | ✓ v1.1 Phase 17 |
 
+## Current Milestone: v1.2 Onboarding
+
+**Goal:** A guided init experience that takes a new user from zero to a configured, running Copland setup without reading the docs.
+
+**Target features:**
+- New `copland init` command — interactive wizard covering API key, repo registration, LLM provider choice, gh auth validation, and API key validation
+- Rename `copland setup` → `copland automate` with `setup` kept as a deprecated alias
+
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
