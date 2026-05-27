@@ -58,7 +58,7 @@
 
 - [x] **Phase 19: Prototype Recovery + Console Launcher** — Restore the Godot prototype from the backup branch onto `main` and add `copland console` to launch it (completed 2026-05-27)
 - [x] **Phase 20: Task & Status Writer** — Orchestrator writes `task.md` and `status.md` per task and updates `status.md` on every lifecycle transition (completed 2026-05-27)
-- [ ] **Phase 21: Per-Run Artifacts & Test Coverage** — Each run materializes a `runs/<run-id>/` subdirectory with PR/cost data, the existing JSONL log stays untouched, and Pest tests exercise the writer with a temporary `HOME`
+- [x] **Phase 21: Per-Run Artifacts & Test Coverage** — Each run materializes a `runs/<run-id>/` subdirectory with PR/cost data, the existing JSONL log stays untouched, and Pest tests exercise the writer with a temporary `HOME` (completed 2026-05-27)
 - [ ] **Phase 22: End-to-End Smoke + Documentation** — A real overnight run renders in the console without errors and both READMEs document the shipped console workflow
 
 ### Phase Details
@@ -121,7 +121,7 @@ Plans:
 
 - [x] 21-01-PLAN.md — Fix 6 PHPStan level-5 errors (mechanical: 2 return types, 3 orchestrator init/guard fixes, 1 HomeDirectory isset cleanup) + composer `analyse` script gains `--memory-limit=512M` (TASK-04)
 - [x] 21-02-PLAN.md — Extend TaskDirectoryWriterService with 3 new public methods (`writeRunStatus`, `writeRunOutcome`, `writeRunBlockedIfNotTerminal`) + thread `$runId` through `RunOrchestratorService::run()` (1 derivation + 7 paired writes + finally-arm blocked + outcome.md write via new `outcomePayload()` mapper); RunLogStore untouched (TASK-03, TASK-04)
-- [ ] 21-03-PLAN.md — Expand `tests/Feature/TaskDirectoryWriterServiceTest.php` from 1 smoke test to 12-18 Pest cases against a temporary HOME covering all 11 D-18 axes; phase-gate TASK-04 negative assertion via `git diff` (TASK-03, TASK-04, TASK-05)
+- [x] 21-03-PLAN.md — Expand `tests/Feature/TaskDirectoryWriterServiceTest.php` from 1 smoke test to 12-18 Pest cases against a temporary HOME covering all 11 D-18 axes; phase-gate TASK-04 negative assertion via `git diff` (TASK-03, TASK-04, TASK-05)
 
 #### Phase 22: End-to-End Smoke + Documentation
 
@@ -150,5 +150,5 @@ Plans:
 |-------|----------------|--------|-----------|
 | 19. Prototype Recovery + Console Launcher | 2/2 | Complete    | 2026-05-27 |
 | 20. Task & Status Writer | 2/2 | Complete   | 2026-05-27 |
-| 21. Per-Run Artifacts & Test Coverage | 2/3 | In Progress|  |
+| 21. Per-Run Artifacts & Test Coverage | 3/3 | Complete   | 2026-05-27 |
 | 22. End-to-End Smoke + Documentation | 0/TBD | Not started | - |
