@@ -12,6 +12,6 @@ class StatusCommand extends Command
 
     public function handle(): void
     {
-        $this->line('Status not yet implemented');
+        $this->line('Use "cat ~/.copland/logs/runs.jsonl" to view recent runs or "copland console" to open the web console.');
     }
 }
