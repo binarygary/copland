@@ -99,7 +99,7 @@ class ClaudePlannerService
         return $data;
     }
 
-    private function usageFromResponse(LlmResponse $response): ?ModelUsage
+    private function usageFromResponse(LlmResponse $response): ModelUsage
     {
         return AnthropicCostEstimator::forModel(
             $this->model,
