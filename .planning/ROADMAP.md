@@ -73,7 +73,12 @@
   2. Opening `console-godot/project.godot` in Godot 4.2+ and pressing F5 launches the Copland Console without errors (empty-state rendering is acceptable since no task directories exist yet)
   3. `copland console` is a registered Laravel Zero command that launches the Godot project pointed at `~/.copland/tasks/` and exits cleanly
   4. `copland console` surfaces a clear error message if Godot is not installed or the `console-godot/` directory is missing
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 19-01-restore-godot-prototype-PLAN.md — Restore Godot prototype from backup branch as single checkout commit; manual F5 launch verification (GODOT-01, GODOT-02)
+- [ ] 19-02-console-command-PLAN.md — Add `copland console` Laravel Zero command with preflight + macOS `open -a Godot` shell-out, plus Pest tests (GODOT-03)
+
 **UI hint**: yes
 
 #### Phase 20: Task & Status Writer
@@ -117,7 +122,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 19. Prototype Recovery + Console Launcher | 0/TBD | Not started | - |
+| 19. Prototype Recovery + Console Launcher | 0/2 | Not started | - |
 | 20. Task & Status Writer | 0/TBD | Not started | - |
 | 21. Per-Run Artifacts & Test Coverage | 0/TBD | Not started | - |
 | 22. End-to-End Smoke + Documentation | 0/TBD | Not started | - |
