@@ -56,7 +56,7 @@
 
 ### Phases
 
-- [ ] **Phase 19: Prototype Recovery + Console Launcher** — Restore the Godot prototype from the backup branch onto `main` and add `copland console` to launch it
+- [x] **Phase 19: Prototype Recovery + Console Launcher** — Restore the Godot prototype from the backup branch onto `main` and add `copland console` to launch it (completed 2026-05-27)
 - [ ] **Phase 20: Task & Status Writer** — Orchestrator writes `task.md` and `status.md` per task and updates `status.md` on every lifecycle transition
 - [ ] **Phase 21: Per-Run Artifacts & Test Coverage** — Each run materializes a `runs/<run-id>/` subdirectory with PR/cost data, the existing JSONL log stays untouched, and Pest tests exercise the writer with a temporary `HOME`
 - [ ] **Phase 22: End-to-End Smoke + Documentation** — A real overnight run renders in the console without errors and both READMEs document the shipped console workflow
@@ -80,7 +80,7 @@
 Plans:
 
 - [x] 19-01-restore-godot-prototype-PLAN.md — Restore Godot prototype from backup branch as single checkout commit; manual F5 launch verification (GODOT-01, GODOT-02)
-- [ ] 19-02-console-command-PLAN.md — Add `copland console` Laravel Zero command with preflight + macOS `open -a Godot` shell-out, plus Pest tests (GODOT-03)
+- [x] 19-02-console-command-PLAN.md — Add `copland console` Laravel Zero command with preflight + macOS `open -a Godot` shell-out, plus Pest tests (GODOT-03)
 
 **UI hint**: yes
 
@@ -131,7 +131,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 19. Prototype Recovery + Console Launcher | 1/2 | In Progress|  |
+| 19. Prototype Recovery + Console Launcher | 2/2 | Complete   | 2026-05-27 |
 | 20. Task & Status Writer | 0/TBD | Not started | - |
 | 21. Per-Run Artifacts & Test Coverage | 0/TBD | Not started | - |
 | 22. End-to-End Smoke + Documentation | 0/TBD | Not started | - |
