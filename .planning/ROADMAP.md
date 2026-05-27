@@ -4,7 +4,8 @@
 
 - ✅ **v1.0 Overnight Hardening** — Phases 1-13 shipped 2026-04-03 ([archive](milestones/v1.0-ROADMAP.md))
 - ✅ **v1.1 Multi-Provider & Asana Integration** — Phases 14-17 shipped 2026-04-09 ([archive](milestones/v1.1-ROADMAP.md))
-- 🚧 **v1.2 Onboarding** — Phases 18-19 (in progress)
+- ✅ **v1.2 Onboarding** — Phase 18 shipped 2026-05-26 (Phase 19 dropped — superseded by v2.0) ([archive](milestones/v1.2-ROADMAP.md))
+- 🚧 **v2.0 Godot Console** — Phase 19+ (defining requirements)
 
 ---
 
@@ -39,47 +40,24 @@
 
 </details>
 
+<details>
+<summary>✅ v1.2 Onboarding (Phase 18) — SHIPPED 2026-05-26</summary>
+
+- [x] Phase 18: Automate Command — completed 2026-04-09
+- [~] Phase 19: Init Wizard — dropped 2026-05-26 (superseded by v2.0; INIT-01..07 deferred to future onboarding milestone)
+
+</details>
+
 ---
 
-## v1.2 Onboarding
+## v2.0 Godot Console
+
+**Goal:** Recover the lost Godot prototype onto `main`, and grow a task-directory persistence layer in the PHP CLI so the read-only console shows live overnight-agent state.
 
 ### Phases
 
-- [x] **Phase 18: Automate Command** — Rename `copland setup` to `copland automate`; keep `setup` as a deprecated alias (completed 2026-04-09)
-- [ ] **Phase 19: Init Wizard** — Interactive `copland init` command guiding users from zero to a configured, running setup
-
-### Phase Details
-
-### Phase 18: Automate Command
-**Goal**: Users can run `copland automate` to install the macOS LaunchAgent; users running the old `copland setup` command are informed of the rename and the command still works
-**Depends on**: Nothing (first phase of milestone)
-**Requirements**: AUTO-01, AUTO-02
-**Success Criteria** (what must be TRUE):
-  1. `copland automate` installs the macOS LaunchAgent with identical behavior to the current `copland setup`
-  2. `copland setup` prints a clear deprecation notice ("setup has been renamed to automate") then delegates to `copland automate` and completes successfully
-  3. `copland setup` is hidden from `copland --help` via `$hidden = true`; `copland automate` is the visible primary command
-**Plans**: 1 plan
-
-Plans:
-- [x] 18-01-PLAN.md — Create AutomateCommand (full logic) + rewrite SetupCommand as hidden deprecated wrapper; update tests
-
-### Phase 19: Init Wizard
-**Goal**: A new user can run `copland init` and be guided through every configuration step interactively, ending with a verified, working Copland setup — no documentation required
-**Depends on**: Phase 18
-**Requirements**: INIT-01, INIT-02, INIT-03, INIT-04, INIT-05, INIT-06, INIT-07
-**Success Criteria** (what must be TRUE):
-  1. `copland init` starts an interactive wizard using Laravel Prompts; user is prompted for LLM provider choice (Anthropic / Ollama / OpenRouter) with Anthropic as the default
-  2. User is prompted for the credential appropriate to their provider (API key for Anthropic/OpenRouter, base URL for Ollama) and the value is written to `~/.copland.yml`
-  3. User is prompted to register at least one repo by GitHub slug and local checkout path; the repo entry is written to `~/.copland.yml`
-  4. Init validates that `gh auth token` succeeds and exits with a clear error message if it does not
-  5. Init makes a test call to the configured LLM provider and exits with a clear error message if the provider is unreachable or the credential is invalid
-  6. At the end of a successful init, user is offered the option to run `copland automate` immediately to install the scheduler; choosing yes installs it, choosing no exits cleanly
-**Plans**: TBD
-**UI hint**: yes
+_To be defined by `gsd-roadmapper` after requirements are scoped. Phase numbering continues from 18; Phase 19 (Init Wizard) was dropped, so the next available phase number is **19**._
 
 ### Progress Table
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 18. Automate Command | 1/1 | Complete   | 2026-04-09 |
-| 19. Init Wizard | 0/TBD | Not started | - |
+_To be filled by roadmapper._

@@ -10,11 +10,13 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 
 ## Current State
 
-- Shipped milestone `v1.1` on 2026-04-09.
+- Shipped milestone `v1.2` on 2026-05-26 (partial — Phase 19 Init Wizard dropped, superseded by v2.0).
 - Multi-provider LLM support: Anthropic (default), Ollama (local, via `OpenAiCompatClient`), and OpenRouter — configurable globally in `~/.copland.yml`, per repo, or per pipeline stage (selector/planner/executor).
 - Asana task source: users can configure `task_source: asana` per repo; Copland fetches open Asana tasks, runs the identical code pipeline, and posts the PR link as an Asana comment.
-- 132 passing tests (Pest), PHPStan level 5 clean.
-- Phase numbering continues from 18 in the next milestone.
+- `copland automate` installs the macOS LaunchAgent; legacy `copland setup` remains as a deprecated alias.
+- 132+ passing tests (Pest), PHPStan level 5 clean.
+- An earlier Go-rewrite direction was abandoned. Backend stays PHP/Laravel Zero; the next direction adds a Godot read-only console.
+- Phase numbering continues from 18 in the active milestone (Phase 19 dropped → next available Phase 19).
 
 ## Validated Capabilities
 
@@ -41,6 +43,7 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 - ✓ `OpenAiCompatClient` + `LlmClientFactory` enable Ollama and OpenRouter as drop-in backends — v1.1 Phase 15
 - ✓ `TaskSource` interface decouples orchestrator from GitHub; `GitHubTaskSource` wraps existing behavior — v1.1 Phase 16
 - ✓ `AsanaService` + `AsanaTaskSource` deliver Asana as a full task source with tag/section filtering and PR comment-back — v1.1 Phase 17
+- ✓ `copland automate` installs the macOS LaunchAgent; `copland setup` kept as a hidden deprecated alias — v1.2 Phase 18
 
 ## Out of Scope
 
@@ -95,13 +98,22 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 | Asana GIDs handled as strings throughout pipeline | `SelectionResult`, `RunResult`, `RunProgressSnapshot` all declare `string\|int\|null $selectedTaskId` | ✓ v1.1 Phase 17 |
 | configuredRepos() unchanged — Asana keys accessed separately via slug-based getters | Preserves existing repo normalization contract; zero risk to GitHub repos | ✓ v1.1 Phase 17 |
 
-## Current Milestone: v1.2 Onboarding
+## Current Milestone: v2.0 Godot Console
 
-**Goal:** A guided init experience that takes a new user from zero to a configured, running Copland setup without reading the docs.
+**Goal:** Recover the lost Godot prototype onto `main`, and grow a task-directory persistence layer in the PHP CLI so the read-only console shows live overnight-agent state.
 
 **Target features:**
-- New `copland init` command — interactive wizard covering API key, repo registration, LLM provider choice, gh auth validation, and API key validation
-- Rename `copland setup` → `copland automate` with `setup` kept as a deprecated alias
+- Restore the Godot 4.2+ prototype (`project.godot`, scenes, scripts, README, TODO) from `backup/local-main-diverged-20260526` into `console-godot/` on `main`
+- Add a task-directory writer to the orchestrator so each run materializes `~/.copland/tasks/<repo>/<id>/{task.md, status.md}` — the layout `TaskLoader.gd` already expects
+- Wire orchestrator state transitions (new → planning → executing → reviewing → complete/blocked) into `status.md` so the console reflects real run lifecycle
+- End-to-end smoke: a real overnight run produces task directories the console renders without errors
+- Document `copland console` (how to run the Godot console) and how task directories relate to the existing `~/.copland/logs/runs.jsonl`
+
+**Key context:**
+- Backend stays PHP/Laravel Zero — additive only; the earlier Go-rewrite direction is dropped (2026-05-26).
+- Godot is a **read-only** visual control plane — no editing, no live-tail in this milestone (deferred per `console-godot/TODO.md`).
+- v1.2 closed with Phase 18 only; Phase 19 (Init Wizard) was dropped because onboarding looks different with a console (see `milestones/v1.2-REQUIREMENTS.md`).
+- Phase numbering continues from Phase 18 — next phase is **19**.
 
 ## Evolution
 
@@ -121,4 +133,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-09 — v1.1 milestone complete*
+*Last updated: 2026-05-26 — v1.2 closed (Phase 19 dropped), v2.0 Godot Console started*
