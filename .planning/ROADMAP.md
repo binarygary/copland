@@ -139,8 +139,8 @@ Plans:
 
 Plans:
 
-- [ ] 20-01-PLAN.md — Build TaskDirectoryWriterService (atomic markdown writer for ~/.copland/tasks/) + Pest smoke test against temp HOME (TASK-01, TASK-02)
-- [ ] 20-02-PLAN.md — Wire writer into RunOrchestratorService (8 lifecycle call sites + finally-block blocked write) and RunCommand composition root (TASK-01, TASK-02)
+- [ ] 22-01-PLAN.md — Remove `merged` from `console-godot/scripts/TaskLoader.gd` STATES + live operator-driven smoke against `binarygary/copland` with D-02 10-item checklist sign-off (CONS-01)
+- [ ] 22-02-PLAN.md — Root `README.md` new console section + D-06 stale-bit fixes + `console-godot/README.md` rewrite + `console-godot/TODO.md` light update + D-09 canonical-purpose split documented in both READMEs (CONS-02, CONS-03)
 
 **UI hint**: yes
 
@@ -151,4 +151,4 @@ Plans:
 | 19. Prototype Recovery + Console Launcher | 2/2 | Complete    | 2026-05-27 |
 | 20. Task & Status Writer | 2/2 | Complete   | 2026-05-27 |
 | 21. Per-Run Artifacts & Test Coverage | 3/3 | Complete    | 2026-05-27 |
-| 22. End-to-End Smoke + Documentation | 0/TBD | Not started | - |
+| 22. End-to-End Smoke + Documentation | 0/2 | Not started | - |
