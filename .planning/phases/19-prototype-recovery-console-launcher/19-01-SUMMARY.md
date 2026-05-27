@@ -3,8 +3,8 @@ phase: 19-prototype-recovery-console-launcher
 plan: 01
 subsystem: console-godot
 tags: [restore, godot, prototype, GODOT-01, GODOT-02]
-status: awaiting-checkpoint
-checkpoint: "Task 4 — manual F5 launch verification (human required, Godot 4.2+ editor is GUI-only)"
+status: complete
+checkpoint_resolved: "Task 4 — manual F5 launch verified by user 2026-05-27 (empty-state launch confirmed clean)"
 dependency_graph:
   requires: ["git ref: backup/local-main-diverged-20260526"]
   provides: ["console-godot/project.godot", "console-godot/scenes/Main.tscn", "console-godot/scripts/Main.gd", "console-godot/scripts/TaskLoader.gd", "console-godot/icon.svg", "console-godot/README.md", "console-godot/TODO.md"]
@@ -28,16 +28,16 @@ decisions:
   - "Exact-list restore (D-03) — only the 7 D-03 files touched; assets/ subtree intentionally untouched (and trivially preserved — see deviation below)"
 metrics:
   duration_seconds: 103
-  duration_human: "~2 minutes (automated tasks only — manual F5 verification pending)"
+  duration_human: "~2 minutes automated + manual F5 verification"
   completed_date: "2026-05-27"
-  tasks_completed: 3
-  tasks_pending_checkpoint: 1
+  tasks_completed: 4
+  tasks_pending_checkpoint: 0
   files_changed: 7
   lines_added: 2966
   lines_removed: 0
 requirements:
-  completed: ["GODOT-01"]
-  pending_human_verification: ["GODOT-02"]
+  completed: ["GODOT-01", "GODOT-02"]
+  pending_human_verification: []
 ---
 
 # Phase 19 Plan 01: Restore Godot Prototype Summary
@@ -53,7 +53,7 @@ Three automated tasks executed and committed; one manual checkpoint task remains
 | 1 | Confirm pre-restore state | All 5 baseline checks pass: clean tree, backup branch reachable (`d736cd80`), 0 D-03 files on HEAD, 7 D-03 files on backup, assets diff empty | (read-only verification — no commit) |
 | 2 | Restore 7 files via single checkout | 7 files staged as `A` (added), explicit `git add` of just those 7 paths, single commit on `worktree-agent-a3b6edc284e288907` branch | `9ee2cc5` |
 | 3 | Post-restore tree audit | `git diff backup..HEAD -- console-godot/` is empty (byte-identical restore); commit touches 7 unique files, 0 of which are under `console-godot/assets/` | (read-only verification — no commit) |
-| 4 | **MANUAL — F5 launch in Godot 4.2+** | **Awaiting human verification** | (n/a — checkpoint) |
+| 4 | **MANUAL — F5 launch in Godot 4.2+** | **Verified by user 2026-05-27** (empty-state launch clean) | (n/a — checkpoint) |
 
 ## Restore Commit
 
