@@ -150,5 +150,5 @@ Plans:
 |-------|----------------|--------|-----------|
 | 19. Prototype Recovery + Console Launcher | 2/2 | Complete    | 2026-05-27 |
 | 20. Task & Status Writer | 2/2 | Complete   | 2026-05-27 |
-| 21. Per-Run Artifacts & Test Coverage | 3/3 | Complete   | 2026-05-27 |
+| 21. Per-Run Artifacts & Test Coverage | 3/3 | Complete    | 2026-05-27 |
 | 22. End-to-End Smoke + Documentation | 0/TBD | Not started | - |

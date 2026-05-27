@@ -17,9 +17,9 @@
 
 - [ ] **TASK-01**: When a run is selected, the orchestrator writes `~/.copland/tasks/<repo>/<id>/task.md` containing the task title, body, repo slug, repo path, source URL, and `created_at` timestamp
 - [ ] **TASK-02**: The orchestrator writes/updates `~/.copland/tasks/<repo>/<id>/status.md` on every lifecycle transition (new → planning → executing → reviewing → complete | blocked) with a timestamp per transition
-- [ ] **TASK-03**: Each run writes a per-run subdirectory `~/.copland/tasks/<repo>/<id>/runs/<run-id>/` capturing at minimum the PR URL (or a structured failure reason) and the final cost summary
-- [ ] **TASK-04**: Existing `~/.copland/logs/runs.jsonl` JSONL log keeps working unchanged — additive only, no behavioral regression for existing log consumers
-- [ ] **TASK-05**: Task-directory writer is exercised by Pest tests using a temporary `HOME` so no developer-machine state is touched
+- [x] **TASK-03**: Each run writes a per-run subdirectory `~/.copland/tasks/<repo>/<id>/runs/<run-id>/` capturing at minimum the PR URL (or a structured failure reason) and the final cost summary
+- [x] **TASK-04**: Existing `~/.copland/logs/runs.jsonl` JSONL log keeps working unchanged — additive only, no behavioral regression for existing log consumers
+- [x] **TASK-05**: Task-directory writer is exercised by Pest tests using a temporary `HOME` so no developer-machine state is touched
 
 ### Console Integration & Docs
 
@@ -60,9 +60,9 @@ Also deferred:
 | GODOT-03 | Phase 19 | Complete |
 | TASK-01 | Phase 20 | Pending |
 | TASK-02 | Phase 20 | Pending |
-| TASK-03 | Phase 21 | Pending |
-| TASK-04 | Phase 21 | Pending |
-| TASK-05 | Phase 21 | Pending |
+| TASK-03 | Phase 21 | Complete |
+| TASK-04 | Phase 21 | Complete |
+| TASK-05 | Phase 21 | Complete |
 | CONS-01 | Phase 22 | Pending |
 | CONS-02 | Phase 22 | Pending |
 | CONS-03 | Phase 22 | Pending |
