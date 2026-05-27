@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Godot Console
 status: executing
-stopped_at: Phase 21 context gathered
-last_updated: "2026-05-27T13:33:12.501Z"
+stopped_at: Phase 22 context gathered
+last_updated: "2026-05-27T14:48:59.613Z"
 last_activity: 2026-05-27
 progress:
   total_phases: 4
@@ -68,6 +68,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-27T11:57:03.106Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-per-run-artifacts-test-coverage/21-CONTEXT.md
+Last session: 2026-05-27T14:48:59.605Z
+Stopped at: Phase 22 context gathered
+Resume file: .planning/phases/22-end-to-end-smoke-documentation/22-CONTEXT.md
