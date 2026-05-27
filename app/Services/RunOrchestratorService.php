@@ -28,6 +28,7 @@ class RunOrchestratorService
         private VerificationService $verifier,
         private ?PlanArtifactStore $planArtifactStore = null,
         private ?RunLogStore $runLogStore = null,
+        private ?TaskDirectoryWriterService $taskWriter = null,
     ) {}
 
     public function run(string $repo, array $repoProfile, ?callable $progressCallback = null, ?RunProgressSnapshot $snapshot = null): RunResult
@@ -107,8 +108,19 @@ class RunOrchestratorService
 
             $this->pushLog("      Selected issue #{$selectedIssue['number']}: {$selectedIssue['title']}");
 
+            // Per D-06: Asana sources use basename(repo_path) so the on-disk directory and
+            // the frontmatter repo_slug agree (no GH-style slash, no __ collapse needed).
+            $writerRepoSlug = $this->taskSource instanceof AsanaTaskSource
+                ? basename($repoProfile['repo_path'])
+                : $repo;
+
+            $this->taskWriter?->writeNewTask($writerRepoSlug, $selectedIssue['number'], $selectedIssue['title'] ?? '', $selectedIssue['body'] ?? '', $repoProfile['repo_path'], $selectedIssue['html_url'] ?? '');
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'new');
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'selected');
+
             // Step 3: Claude plan
             $this->pushLog('[3/8] Running Claude planner');
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'planning');
             $plan = $this->planner->planTask($repoProfile, $selectedIssue);
             if ($snapshot !== null) {
                 $snapshot->plannerUsage = $plan->usage;
@@ -161,6 +173,7 @@ class RunOrchestratorService
             }
 
             $this->pushLog('      Plan validated OK');
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'planned');
 
             // Step 5: Create worktree
             $repoPath = $repoProfile['repo_path'] ?? getcwd();
@@ -172,6 +185,7 @@ class RunOrchestratorService
 
             // Step 6: Run executor
             $this->pushLog('[6/8] Running Claude executor');
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'executing');
             $executionResult = $this->executor->executeWithRepoProfile(
                 $workspacePath,
                 $plan,
@@ -211,6 +225,7 @@ class RunOrchestratorService
 
             // Step 7: Verify
             $this->pushLog('[7/8] Running verification');
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'verifying');
             $verificationResult = $this->verifier->verify($repoProfile, $workspacePath, $plan, $executionResult);
 
             if (! $verificationResult->passed) {
@@ -261,6 +276,7 @@ class RunOrchestratorService
             $prUrl = $pr['html_url'];
             $prNumber = $pr['number'];
             $this->pushLog("      Draft PR opened: {$prUrl}");
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'pr_open');
 
             foreach ($repoProfile['required_labels'] ?? ['agent-ready'] as $label) {
                 $this->taskSource->removeTag($repo, $selectedIssue['number'], $label);
@@ -304,6 +320,14 @@ class RunOrchestratorService
                     $this->pushLog('      Run finished in current checkout');
                 } catch (\Exception $e) {
                     $this->pushLog("      Warning: cleanup step failed: {$e->getMessage()}");
+                }
+            }
+
+            if ($this->taskWriter !== null && $selectedIssue !== null) {
+                try {
+                    $this->taskWriter->writeBlockedIfNotTerminal($writerRepoSlug, $selectedIssue['number']);
+                } catch (Throwable $e) {
+                    $this->pushLog("      Warning: blocked-state write failed: {$e->getMessage()}");
                 }
             }
 
