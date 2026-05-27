@@ -40,6 +40,8 @@ class RunOrchestratorService
         $selectedIssue = null;
         $runLogStore = $this->runLogStore ?? new RunLogStore;
         $caught = null;
+        $repoPath = null;
+        $writerRepoSlug = null;
 
         if ($snapshot !== null) {
             $snapshot->repo = $repo;
@@ -314,7 +316,7 @@ class RunOrchestratorService
 
             throw $e;
         } finally {
-            if (isset($workspacePath) && $workspacePath !== null) {
+            if (isset($workspacePath)) {
                 try {
                     $this->workspace->cleanup($repoPath, $workspacePath);
                     $this->pushLog('      Run finished in current checkout');
@@ -323,7 +325,7 @@ class RunOrchestratorService
                 }
             }
 
-            if ($this->taskWriter !== null && $selectedIssue !== null) {
+            if ($this->taskWriter !== null && $selectedIssue !== null && $writerRepoSlug !== null) {
                 try {
                     $this->taskWriter->writeBlockedIfNotTerminal($writerRepoSlug, $selectedIssue['number']);
                 } catch (Throwable $e) {

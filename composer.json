@@ -52,7 +52,7 @@
         "test": "./vendor/bin/pest --no-coverage",
         "lint": "./vendor/bin/pint",
         "lint:check": "./vendor/bin/pint --test",
-        "analyse": "./vendor/bin/phpstan analyse"
+        "analyse": "./vendor/bin/phpstan analyse --memory-limit=512M"
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
