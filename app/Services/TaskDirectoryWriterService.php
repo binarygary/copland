@@ -79,6 +79,65 @@ class TaskDirectoryWriterService
         $this->writeStatus($repoSlug, $taskId, 'blocked');
     }
 
+    public function writeRunStatus(string $repoSlug, string|int $taskId, string $runId, string $state): void
+    {
+        $dir = $this->runDir($repoSlug, $taskId, $runId);
+        $this->ensureDirectoryExists($dir);
+
+        $statusPath = $dir.'/status.md';
+        $now = $this->now();
+
+        $frontmatter = $this->renderFrontmatter([
+            'state' => $state,
+            'updated_at' => $now,
+        ]);
+
+        $newRow = "| {$now} | {$state} |\n";
+
+        if (is_file($statusPath)) {
+            $existing = (string) file_get_contents($statusPath);
+            $body = $this->extractBody($existing).$newRow;
+        } else {
+            $body = "## Transitions\n\n| Timestamp (UTC)        | State     |\n|------------------------|-----------|\n".$newRow;
+        }
+
+        $content = "---\n{$frontmatter}---\n\n{$body}";
+
+        $this->atomicWrite($statusPath, $content);
+
+        // D-07: per-run state uses a 3-tuple key, coexisting with the task-level 2-tuple key.
+        $this->lastState["{$repoSlug}/{$taskId}/runs/{$runId}"] = $state;
+    }
+
+    public function writeRunBlockedIfNotTerminal(string $repoSlug, string|int $taskId, string $runId): void
+    {
+        $current = $this->lastState["{$repoSlug}/{$taskId}/runs/{$runId}"] ?? null;
+
+        if ($current === null || $current === 'pr_open' || $current === 'blocked') {
+            return;
+        }
+
+        $this->writeRunStatus($repoSlug, $taskId, $runId, 'blocked');
+    }
+
+    public function writeRunOutcome(string $repoSlug, string|int $taskId, string $runId, array $outcome): void
+    {
+        $dir = $this->runDir($repoSlug, $taskId, $runId);
+        $this->ensureDirectoryExists($dir);
+
+        // The 9 D-05 keys (caller pre-builds via outcomePayload helper):
+        //   run_id, status, pr_number, pr_url, cost_usd, started_at, finished_at, failure_reason, partial
+        // Optional '_body' key (stripped before frontmatter render) carries an optional per-stage usage table.
+        $body = isset($outcome['_body']) ? (string) $outcome['_body'] : '';
+        unset($outcome['_body']);
+
+        $frontmatter = $this->renderFrontmatter($outcome);
+
+        $content = "---\n{$frontmatter}---\n\n{$body}";
+
+        $this->atomicWrite($dir.'/outcome.md', $content);
+    }
+
     private function now(): string
     {
         if ($this->clock !== null) {
@@ -94,6 +153,11 @@ class TaskDirectoryWriterService
         $repoDir = str_replace('/', '__', $repoSlug);
 
         return "{$home}/.copland/tasks/{$repoDir}/".((string) $taskId);
+    }
+
+    private function runDir(string $repoSlug, string|int $taskId, string $runId): string
+    {
+        return $this->taskDir($repoSlug, $taskId)."/runs/{$runId}";
     }
 
     private function ensureDirectoryExists(string $directory): void
