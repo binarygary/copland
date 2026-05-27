@@ -57,7 +57,7 @@
 ### Phases
 
 - [x] **Phase 19: Prototype Recovery + Console Launcher** — Restore the Godot prototype from the backup branch onto `main` and add `copland console` to launch it (completed 2026-05-27)
-- [ ] **Phase 20: Task & Status Writer** — Orchestrator writes `task.md` and `status.md` per task and updates `status.md` on every lifecycle transition
+- [x] **Phase 20: Task & Status Writer** — Orchestrator writes `task.md` and `status.md` per task and updates `status.md` on every lifecycle transition (completed 2026-05-27)
 - [ ] **Phase 21: Per-Run Artifacts & Test Coverage** — Each run materializes a `runs/<run-id>/` subdirectory with PR/cost data, the existing JSONL log stays untouched, and Pest tests exercise the writer with a temporary `HOME`
 - [ ] **Phase 22: End-to-End Smoke + Documentation** — A real overnight run renders in the console without errors and both READMEs document the shipped console workflow
 
@@ -100,8 +100,8 @@ Plans:
 
 Plans:
 
-- [ ] 20-01-PLAN.md — Build TaskDirectoryWriterService (atomic markdown writer for ~/.copland/tasks/) + Pest smoke test against temp HOME (TASK-01, TASK-02)
-- [ ] 20-02-PLAN.md — Wire writer into RunOrchestratorService (8 lifecycle call sites + finally-block blocked write) and RunCommand composition root (TASK-01, TASK-02)
+- [x] 20-01-PLAN.md — Build TaskDirectoryWriterService (atomic markdown writer for ~/.copland/tasks/) + Pest smoke test against temp HOME (TASK-01, TASK-02)
+- [x] 20-02-PLAN.md — Wire writer into RunOrchestratorService (8 lifecycle call sites + finally-block blocked write) and RunCommand composition root (TASK-01, TASK-02)
 
 #### Phase 21: Per-Run Artifacts & Test Coverage
 
@@ -140,6 +140,7 @@ Plans:
 
 - [ ] 20-01-PLAN.md — Build TaskDirectoryWriterService (atomic markdown writer for ~/.copland/tasks/) + Pest smoke test against temp HOME (TASK-01, TASK-02)
 - [ ] 20-02-PLAN.md — Wire writer into RunOrchestratorService (8 lifecycle call sites + finally-block blocked write) and RunCommand composition root (TASK-01, TASK-02)
+
 **UI hint**: yes
 
 ### Progress Table
@@ -147,6 +148,6 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 19. Prototype Recovery + Console Launcher | 2/2 | Complete    | 2026-05-27 |
-| 20. Task & Status Writer | 0/2 | Not started | - |
+| 20. Task & Status Writer | 2/2 | Complete   | 2026-05-27 |
 | 21. Per-Run Artifacts & Test Coverage | 0/TBD | Not started | - |
 | 22. End-to-End Smoke + Documentation | 0/TBD | Not started | - |
