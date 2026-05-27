@@ -25,7 +25,6 @@ const STATES := [
     "executing",
     "verifying",
     "pr_open",
-    "merged",
     "blocked",
 ]
 
