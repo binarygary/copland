@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Godot Console
-status: completed
+status: executing
 stopped_at: Phase 21 context gathered
-last_updated: "2026-05-27T11:57:03.116Z"
-last_activity: 2026-05-27 -- Phase 20 marked complete
+last_updated: "2026-05-27T13:11:34.321Z"
+last_activity: 2026-05-27 -- Phase 21 execution started
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 4
+  total_plans: 7
   completed_plans: 4
   percent: 50
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-26)
 
 **Core value:** A reliable overnight agent that opens merge-ready PRs without intervention.
-**Current focus:** Phase 20 — Task & Status Writer
+**Current focus:** Phase 21 — per-run-artifacts-test-coverage
 
 ## Current Position
 
-Phase: 20 — COMPLETE
-Plan: 1 of 2
-Status: Phase 20 complete
-Last activity: 2026-05-27 -- Phase 20 marked complete
+Phase: 21 (per-run-artifacts-test-coverage) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 21
+Last activity: 2026-05-27 -- Phase 21 execution started
 
 ## Performance Metrics
 
