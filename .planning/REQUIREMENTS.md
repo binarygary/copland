@@ -1,40 +1,53 @@
-# Requirements — v1.2 Onboarding
+# Requirements — v2.0 Godot Console
 
-**Milestone:** v1.2 Onboarding
-**Goal:** A guided init experience that takes a new user from zero to a configured, running Copland setup without reading the docs.
-
----
-
-## v1 Requirements
-
-### Init Command
-
-- [ ] **INIT-01**: User can run `copland init` to start an interactive setup wizard
-- [ ] **INIT-02**: User is prompted to choose their LLM provider (Anthropic / Ollama / OpenRouter) with Anthropic as the default
-- [ ] **INIT-03**: User is prompted for their API key (Anthropic/OpenRouter) or base URL (Ollama) for the chosen provider, and the value is written to `~/.copland.yml`
-- [ ] **INIT-04**: User is prompted to register at least one repo (slug + local path) during init
-- [ ] **INIT-05**: Init validates `gh auth token` succeeds before finishing
-- [ ] **INIT-06**: Init validates the configured LLM provider is reachable (test call) before finishing
-- [ ] **INIT-07**: At the end of init, user is offered the option to run `copland automate` to install the scheduler
-
-### Automate Command
-
-- [x] **AUTO-01**: User can run `copland automate` to install the macOS LaunchAgent (current `copland setup` behavior)
-- [x] **AUTO-02**: Running `copland setup` shows a deprecation notice and delegates to `copland automate`
+**Milestone:** v2.0 Godot Console
+**Goal:** Recover the lost Godot prototype onto `main`, and grow a task-directory persistence layer in the PHP CLI so the read-only console shows live overnight-agent state.
 
 ---
 
-## Future Requirements
+## v2.0 Requirements
 
-- Per-stage LLM provider configuration during init (selector/planner/executor)
-- Linux systemd service installer via `copland automate`
-- Multi-repo registration flow (add more than one repo during init)
+### Prototype Recovery
+
+- [ ] **GODOT-01**: Godot prototype files (`console-godot/{project.godot, scenes/Main.tscn, scripts/Main.gd, scripts/TaskLoader.gd, icon.svg, README.md, TODO.md}`) are restored onto `main` from `backup/local-main-diverged-20260526` with the existing `console-godot/assets/{fonts,textures,themes}/` directories preserved
+- [ ] **GODOT-02**: `console-godot/README.md` run instructions work end-to-end on the current Godot 4.2+ install — opening `project.godot` in Godot and pressing F5 launches the Copland Console without errors
+- [ ] **GODOT-03**: User can run `copland console` (new PHP CLI subcommand) which launches the Godot project pointed at the live `~/.copland/tasks/` directory
+
+### Backend Persistence
+
+- [ ] **TASK-01**: When a run is selected, the orchestrator writes `~/.copland/tasks/<repo>/<id>/task.md` containing the task title, body, repo slug, repo path, source URL, and `created_at` timestamp
+- [ ] **TASK-02**: The orchestrator writes/updates `~/.copland/tasks/<repo>/<id>/status.md` on every lifecycle transition (new → planning → executing → reviewing → complete | blocked) with a timestamp per transition
+- [ ] **TASK-03**: Each run writes a per-run subdirectory `~/.copland/tasks/<repo>/<id>/runs/<run-id>/` capturing at minimum the PR URL (or a structured failure reason) and the final cost summary
+- [ ] **TASK-04**: Existing `~/.copland/logs/runs.jsonl` JSONL log keeps working unchanged — additive only, no behavioral regression for existing log consumers
+- [ ] **TASK-05**: Task-directory writer is exercised by Pest tests using a temporary `HOME` so no developer-machine state is touched
+
+### Console Integration & Docs
+
+- [ ] **CONS-01**: A real overnight-agent run produces a task directory that `TaskLoader.gd` renders without errors and without schema drift — task titles, statuses, and run metadata all show up in the console panes
+- [ ] **CONS-02**: Root `README.md` documents the console: how to install Godot 4.2+, how to launch via `copland console`, and what each of the three panes (workflow states / task manifest / dossier) shows
+- [ ] **CONS-03**: `console-godot/README.md` is updated to match what shipped (file paths, what counts as "real" data, any divergence from the original prototype design)
+
+---
+
+## Future Requirements (Deferred from `console-godot/TODO.md`)
+
+These are explicitly out of scope for v2.0; they appear as deferred items in the recovered `console-godot/TODO.md` and should drive a future v2.1 milestone:
+
+- Run drill-in selection — ↑/↓ to pick runs in the dossier, ENTER to open a deeper view
+- Live-tail of an executing run — structured progress events (NDJSON or unix socket) streamed to the console
+- UI scale on Retina / pixel-perfect rendering — only relevant if `stretch/mode` changes from `canvas_items`
+
+Also deferred:
+
+- INIT-01..07 from v1.2 — onboarding wizard, to be redesigned once the console shape is settled
 
 ## Out of Scope
 
-- GUI or web-based setup wizard — CLI only
-- Auto-detection of repos from git remotes — explicit registration only
-- Windows support — macOS/Linux only
+- Editing or write actions from the Godot console — read-only is the ceiling for v2.0 and likely beyond
+- Replacing or removing the existing `~/.copland/logs/runs.jsonl` — it stays as the canonical local audit trail
+- Auto-launching the console after a run — the console is operator-driven, not auto-popping
+- Bundling the Godot runtime with Copland — user installs Godot separately
+- Windows console support — macOS/Linux only, matching the rest of Copland
 
 ---
 
@@ -42,12 +55,14 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| INIT-01 | Phase 19 | Pending |
-| INIT-02 | Phase 19 | Pending |
-| INIT-03 | Phase 19 | Pending |
-| INIT-04 | Phase 19 | Pending |
-| INIT-05 | Phase 19 | Pending |
-| INIT-06 | Phase 19 | Pending |
-| INIT-07 | Phase 19 | Pending |
-| AUTO-01 | Phase 18 | Satisfied |
-| AUTO-02 | Phase 18 | Satisfied |
+| GODOT-01 | TBD | Pending |
+| GODOT-02 | TBD | Pending |
+| GODOT-03 | TBD | Pending |
+| TASK-01 | TBD | Pending |
+| TASK-02 | TBD | Pending |
+| TASK-03 | TBD | Pending |
+| TASK-04 | TBD | Pending |
+| TASK-05 | TBD | Pending |
+| CONS-01 | TBD | Pending |
+| CONS-02 | TBD | Pending |
+| CONS-03 | TBD | Pending |
