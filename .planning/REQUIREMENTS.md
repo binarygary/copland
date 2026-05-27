@@ -55,14 +55,14 @@ Also deferred:
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| GODOT-01 | TBD | Pending |
-| GODOT-02 | TBD | Pending |
-| GODOT-03 | TBD | Pending |
-| TASK-01 | TBD | Pending |
-| TASK-02 | TBD | Pending |
-| TASK-03 | TBD | Pending |
-| TASK-04 | TBD | Pending |
-| TASK-05 | TBD | Pending |
-| CONS-01 | TBD | Pending |
-| CONS-02 | TBD | Pending |
-| CONS-03 | TBD | Pending |
+| GODOT-01 | Phase 19 | Pending |
+| GODOT-02 | Phase 19 | Pending |
+| GODOT-03 | Phase 19 | Pending |
+| TASK-01 | Phase 20 | Pending |
+| TASK-02 | Phase 20 | Pending |
+| TASK-03 | Phase 21 | Pending |
+| TASK-04 | Phase 21 | Pending |
+| TASK-05 | Phase 21 | Pending |
+| CONS-01 | Phase 22 | Pending |
+| CONS-02 | Phase 22 | Pending |
+| CONS-03 | Phase 22 | Pending |
