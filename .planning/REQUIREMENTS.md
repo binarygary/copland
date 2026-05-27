@@ -9,9 +9,9 @@
 
 ### Prototype Recovery
 
-- [ ] **GODOT-01**: Godot prototype files (`console-godot/{project.godot, scenes/Main.tscn, scripts/Main.gd, scripts/TaskLoader.gd, icon.svg, README.md, TODO.md}`) are restored onto `main` from `backup/local-main-diverged-20260526` with the existing `console-godot/assets/{fonts,textures,themes}/` directories preserved
-- [ ] **GODOT-02**: `console-godot/README.md` run instructions work end-to-end on the current Godot 4.2+ install — opening `project.godot` in Godot and pressing F5 launches the Copland Console without errors
-- [ ] **GODOT-03**: User can run `copland console` (new PHP CLI subcommand) which launches the Godot project pointed at the live `~/.copland/tasks/` directory
+- [x] **GODOT-01**: Godot prototype files (`console-godot/{project.godot, scenes/Main.tscn, scripts/Main.gd, scripts/TaskLoader.gd, icon.svg, README.md, TODO.md}`) are restored onto `main` from `backup/local-main-diverged-20260526` with the existing `console-godot/assets/{fonts,textures,themes}/` directories preserved
+- [x] **GODOT-02**: `console-godot/README.md` run instructions work end-to-end on the current Godot 4.2+ install — opening `project.godot` in Godot and pressing F5 launches the Copland Console without errors
+- [x] **GODOT-03**: User can run `copland console` (new PHP CLI subcommand) which launches the Godot project pointed at the live `~/.copland/tasks/` directory
 
 ### Backend Persistence
 
@@ -55,9 +55,9 @@ Also deferred:
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| GODOT-01 | Phase 19 | Pending |
-| GODOT-02 | Phase 19 | Pending |
-| GODOT-03 | Phase 19 | Pending |
+| GODOT-01 | Phase 19 | Complete |
+| GODOT-02 | Phase 19 | Complete |
+| GODOT-03 | Phase 19 | Complete |
 | TASK-01 | Phase 20 | Pending |
 | TASK-02 | Phase 20 | Pending |
 | TASK-03 | Phase 21 | Pending |
