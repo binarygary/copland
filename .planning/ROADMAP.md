@@ -115,12 +115,13 @@ Plans:
   3. Pest tests exercise the task-directory writer end-to-end using a temporary `HOME`, covering happy path, lifecycle transitions, and failure/blocked outcomes
   4. PHPStan level 5 stays clean and the existing 132+ test suite continues to pass
 
-**Plans**: 2 plans
+**Plans**: 3 plans
 
 Plans:
 
-- [ ] 20-01-PLAN.md — Build TaskDirectoryWriterService (atomic markdown writer for ~/.copland/tasks/) + Pest smoke test against temp HOME (TASK-01, TASK-02)
-- [ ] 20-02-PLAN.md — Wire writer into RunOrchestratorService (8 lifecycle call sites + finally-block blocked write) and RunCommand composition root (TASK-01, TASK-02)
+- [ ] 21-01-PLAN.md — Fix 6 PHPStan level-5 errors (mechanical: 2 return types, 3 orchestrator init/guard fixes, 1 HomeDirectory isset cleanup) + composer `analyse` script gains `--memory-limit=512M` (TASK-04)
+- [ ] 21-02-PLAN.md — Extend TaskDirectoryWriterService with 3 new public methods (`writeRunStatus`, `writeRunOutcome`, `writeRunBlockedIfNotTerminal`) + thread `$runId` through `RunOrchestratorService::run()` (1 derivation + 7 paired writes + finally-arm blocked + outcome.md write via new `outcomePayload()` mapper); RunLogStore untouched (TASK-03, TASK-04)
+- [ ] 21-03-PLAN.md — Expand `tests/Feature/TaskDirectoryWriterServiceTest.php` from 1 smoke test to 12-18 Pest cases against a temporary HOME covering all 11 D-18 axes; phase-gate TASK-04 negative assertion via `git diff` (TASK-03, TASK-04, TASK-05)
 
 #### Phase 22: End-to-End Smoke + Documentation
 
@@ -149,5 +150,5 @@ Plans:
 |-------|----------------|--------|-----------|
 | 19. Prototype Recovery + Console Launcher | 2/2 | Complete    | 2026-05-27 |
 | 20. Task & Status Writer | 2/2 | Complete   | 2026-05-27 |
-| 21. Per-Run Artifacts & Test Coverage | 0/TBD | Not started | - |
+| 21. Per-Run Artifacts & Test Coverage | 0/3 | Planned | - |
 | 22. End-to-End Smoke + Documentation | 0/TBD | Not started | - |
