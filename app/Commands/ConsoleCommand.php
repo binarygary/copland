@@ -15,15 +15,26 @@ class ConsoleCommand extends Command
         private $runner = null,
         private $projectRootResolver = null,
         private $projectFileChecker = null,
+        private $osFamilyResolver = null,
     ) {
         parent::__construct();
 
         $this->projectRootResolver ??= static fn (): string => base_path();
         $this->projectFileChecker ??= static fn (string $path): bool => file_exists($path);
+        $this->osFamilyResolver ??= static fn (): string => PHP_OS_FAMILY;
     }
 
     public function handle(): int
     {
+        // Preflight #0: macOS-only. `open`, `mdfind`, and `osascript` are Darwin
+        // tools; failing here with a clear message beats a misleading
+        // "Godot.app not found" on Linux/Windows. (Phase 19 D-04/D-05.)
+        if (($this->osFamilyResolver)() !== 'Darwin') {
+            $this->error('copland console is macOS-only — the launcher shells out to `open`, `mdfind`, and `osascript`. (Phase 19 D-04.)');
+
+            return self::FAILURE;
+        }
+
         $projectRoot = ($this->projectRootResolver)();
         $godotProjectDir = $projectRoot.'/console-godot';
         $godotProjectFile = $godotProjectDir.'/project.godot';

@@ -26,6 +26,7 @@ it('launches Godot via open when preflights pass', function () {
         },
         projectRootResolver: fn (): string => '/Users/tester/projects/copland',
         projectFileChecker: fn (string $path): bool => $path === '/Users/tester/projects/copland/console-godot/project.godot',
+        osFamilyResolver: fn (): string => 'Darwin',
     );
     $command->setLaravel($this->app);
 
@@ -51,6 +52,7 @@ it('refuses to launch and reports missing console-godot/ when project file is ab
         },
         projectRootResolver: fn (): string => '/Users/tester/projects/copland',
         projectFileChecker: fn (string $path): bool => false,
+        osFamilyResolver: fn (): string => 'Darwin',
     );
     $command->setLaravel($this->app);
 
@@ -87,6 +89,7 @@ it('refuses to launch and reports missing Godot.app when neither mdfind nor osas
         },
         projectRootResolver: fn (): string => '/Users/tester/projects/copland',
         projectFileChecker: fn (string $path): bool => true,
+        osFamilyResolver: fn (): string => 'Darwin',
     );
     $command->setLaravel($this->app);
 
@@ -104,4 +107,27 @@ it('refuses to launch and reports missing Godot.app when neither mdfind nor osas
         ['mdfind', "kMDItemCFBundleIdentifier == 'org.godotengine.godot'"],
         ['osascript', '-e', 'id of app "Godot"'],
     ]);
+});
+
+it('refuses to launch on non-Darwin platforms with a clear macOS-only message (#12)', function () {
+    $commands = [];
+
+    $command = new ConsoleCommand(
+        runner: function (array $command) use (&$commands): array {
+            $commands[] = $command;
+            throw new RuntimeException('runner must not be invoked when OS guard fires');
+        },
+        projectRootResolver: fn (): string => '/Users/tester/projects/copland',
+        projectFileChecker: fn (string $path): bool => true,
+        osFamilyResolver: fn (): string => 'Linux',
+    );
+    $command->setLaravel($this->app);
+
+    $tester = new CommandTester($command);
+    $exitCode = $tester->execute([]);
+
+    expect($exitCode)->toBe(1);
+    expect($tester->getDisplay())->toContain('macOS-only');
+    // OS guard must fire BEFORE preflight #1 (project file) and #2 (Godot probe).
+    expect($commands)->toBe([]);
 });
