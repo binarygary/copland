@@ -35,29 +35,30 @@ class GitService
 
     public function changedFiles(string $workspacePath): array
     {
-        $process = new Process(['git', 'diff', '--name-only', 'HEAD'], $workspacePath);
-        $process->run();
+        $output = $this->output(['git', 'status', '--porcelain'], $workspacePath, 'git status failed');
 
-        if (! $process->isSuccessful()) {
-            throw new RuntimeException('git diff failed: '.$process->getErrorOutput());
+        $files = [];
+        foreach (explode("\n", $output) as $line) {
+            if (trim($line) === '') {
+                continue;
+            }
+            if (preg_match('/^\?\?\s+\.copland\.yml$/', $line)) {
+                continue;
+            }
+            $path = substr($line, 3);
+            if (str_contains($path, ' -> ')) {
+                [, $path] = explode(' -> ', $path, 2);
+            }
+            $files[] = $path;
         }
 
-        $output = trim($process->getOutput());
-
-        return $output !== '' ? explode("\n", $output) : [];
+        return $files;
     }
 
     public function changedLineCount(string $workspacePath): int
     {
-        $process = new Process(['git', 'diff', '--stat', 'HEAD'], $workspacePath);
-        $process->run();
+        $output = $this->output(['git', 'diff', '--stat', 'HEAD'], $workspacePath, 'git diff --stat failed');
 
-        if (! $process->isSuccessful()) {
-            throw new RuntimeException('git diff --stat failed: '.$process->getErrorOutput());
-        }
-
-        $output = $process->getOutput();
-        preg_match('/(\d+) insertion|(\d+) deletion/', $output, $insertions);
         preg_match_all('/(\d+) insertion|(\d+) deletion/', $output, $matches);
 
         $total = 0;
@@ -113,7 +114,10 @@ class GitService
         $result = $this->execute($command, $cwd);
 
         if ($result['exitCode'] !== 0) {
-            throw new RuntimeException("{$errorMessage}: ".$result['stderr']);
+            $stderr = trim($result['stderr']);
+            $detail = $stderr !== '' ? $stderr : trim($result['stdout']);
+
+            throw new RuntimeException("{$errorMessage}: ".$detail);
         }
     }
 
