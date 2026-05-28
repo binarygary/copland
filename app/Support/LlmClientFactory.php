@@ -236,7 +236,12 @@ final class LlmClientFactory
             $schema = '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}';
         } else {
             $schemaPath = base_path("resources/schemas/{$stage}.json");
-            $schema = (string) file_get_contents($schemaPath);
+            $schema = @file_get_contents($schemaPath);
+            if ($schema === false) {
+                throw new \RuntimeException(
+                    "claude-code: schema file not found or unreadable for stage '{$stage}' at {$schemaPath}"
+                );
+            }
         }
 
         // RunCommand::runRepo() has already chdir($path) before the factory call,

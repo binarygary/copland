@@ -234,4 +234,62 @@ class ClaudeCodeClientTest extends TestCase
 
         $this->assertSame(['Read', 'Edit', 'Bash(git status)'], $client->allowedTools());
     }
+
+    // ─── Single-key {summary: string} is unwrapped, not re-encoded ────────────
+
+    public function test_complete_unwraps_single_key_summary_object_from_structured_output(): void
+    {
+        $envelope = [
+            'result' => 'Skipped per instruction.',
+            'total_cost_usd' => 0.001,
+            'structured_output' => ['summary' => 'Did the thing.'],
+        ];
+        $captured = [];
+        $runner = $this->makeRunnerStub($envelope, $captured);
+
+        $client = new ClaudeCodeClient(
+            runner: $runner,
+            jsonSchema: '{"type":"object","properties":{"summary":{"type":"string"}}}',
+            allowedTools: ['Read'],
+            workspaceCwd: '/tmp/ws',
+        );
+
+        $response = $client->complete(
+            model: 'sonnet',
+            maxTokens: 4096,
+            messages: [['role' => 'user', 'content' => 'do it']],
+        );
+
+        // The raw summary string must surface verbatim — NOT a JSON literal.
+        $this->assertSame('Did the thing.', $response->content[0]['text']);
+    }
+
+    // ─── Multi-key structured output is re-encoded as JSON ────────────────────
+
+    public function test_complete_reencodes_multi_key_structured_output(): void
+    {
+        $envelope = [
+            'result' => '',
+            'total_cost_usd' => 0.001,
+            'structured_output' => ['decision' => 'act', 'reason' => 'safe'],
+        ];
+        $captured = [];
+        $runner = $this->makeRunnerStub($envelope, $captured);
+
+        $client = new ClaudeCodeClient(
+            runner: $runner,
+            jsonSchema: '{}',
+            allowedTools: [],
+            workspaceCwd: '/tmp/ws',
+        );
+
+        $response = $client->complete(
+            model: 'sonnet',
+            maxTokens: 4096,
+            messages: [['role' => 'user', 'content' => 'select']],
+        );
+
+        $decoded = json_decode($response->content[0]['text'], true);
+        $this->assertSame(['decision' => 'act', 'reason' => 'safe'], $decoded);
+    }
 }

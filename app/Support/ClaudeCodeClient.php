@@ -65,11 +65,11 @@ class ClaudeCodeClient implements LlmClient
 
         $structured = $envelope['raw']['structured_output'] ?? null;
         if ($structured !== null) {
-            $resultText = (string) json_encode($structured);
+            $resultText = $this->unwrapStructured($structured);
         } elseif (is_string($envelope['result'])) {
             $resultText = $envelope['result'];
         } else {
-            $resultText = (string) json_encode($envelope['result']);
+            $resultText = $this->unwrapStructured($envelope['result']);
         }
 
         return new LlmResponse(
@@ -127,5 +127,30 @@ class ClaudeCodeClient implements LlmClient
         }
 
         return implode("\n\n", $parts);
+    }
+
+    /**
+     * Render a structured result as the text block delivered to the stage.
+     *
+     * The selector / planner schemas yield JSON objects the downstream
+     * service then json_decodes again, so we re-encode here. The executor
+     * schema is `{summary: string}` whose only meaningful payload is the
+     * summary string itself — if we json_encoded that, the user would see a
+     * raw JSON literal (`{"summary":"..."}`) in the GitHub comment instead
+     * of the natural-language summary. Detect the single-key `summary`
+     * shape and unwrap it.
+     */
+    private function unwrapStructured(mixed $structured): string
+    {
+        if (
+            is_array($structured)
+            && count($structured) === 1
+            && array_key_exists('summary', $structured)
+            && is_string($structured['summary'])
+        ) {
+            return $structured['summary'];
+        }
+
+        return (string) json_encode($structured);
     }
 }

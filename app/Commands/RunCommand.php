@@ -30,7 +30,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use LaravelZero\Framework\Commands\Command;
 use Symfony\Component\Console\Command\SignalableCommandInterface;
-use Symfony\Component\Process\Process;
+use Symfony\Component\Process\ExecutableFinder;
 use Throwable;
 
 class RunCommand extends Command implements SignalableCommandInterface
@@ -262,10 +262,11 @@ class RunCommand extends Command implements SignalableCommandInterface
             }
 
             // Claude Code binary presence check — one warn per unique binary path.
-            // Uses `which <binary>` rather than `claude --version` (slower, requires
-            // auth — defer to first real invocation). This is purely a PATH probe.
+            // Uses Symfony's ExecutableFinder so Windows / minimal containers
+            // without `which` (or with `where`) work correctly.
             $claudeStages = LlmClientFactory::claudeCodeStageConfigs($globalConfig, $repoConfig);
             $checkedBinaries = [];
+            $finder = new ExecutableFinder;
             foreach ($claudeStages as $entry) {
                 $binary = $entry['binary_path'] ?? 'claude';
                 if (in_array($binary, $checkedBinaries, true)) {
@@ -273,9 +274,7 @@ class RunCommand extends Command implements SignalableCommandInterface
                 }
                 $checkedBinaries[] = $binary;
 
-                $probe = new Process(['which', $binary]);
-                $probe->run();
-                if (! $probe->isSuccessful()) {
+                if ($finder->find($binary) === null) {
                     $this->warn("Warning: Claude Code binary '{$binary}' not found on PATH. The claude-code provider will fail at runtime. Install with `npm install -g @anthropic-ai/claude-code` or set `binary_path` in your llm config.");
                 }
             }

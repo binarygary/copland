@@ -123,7 +123,8 @@ class ClaudeCodeRunnerTest extends TestCase
         $this->assertContains('--model', $argv);
         $this->assertContains('sonnet', $argv);
         $this->assertContains('--max-budget-usd', $argv);
-        $this->assertContains('0.5', $argv);
+        // number_format with 6 decimals, locale-safe '.' separator.
+        $this->assertContains('0.500000', $argv);
 
         // Prompt is preceded by `--` and is the final positional arg.
         $last = count($argv) - 1;
@@ -265,6 +266,32 @@ class ClaudeCodeRunnerTest extends TestCase
 
         $this->assertNotContains('--model', $captured['argv']);
         $this->assertNotContains('--max-budget-usd', $captured['argv']);
+    }
+
+    // ─── Tiny budget: no scientific notation in argv ──────────────────────────
+
+    public function test_run_stage_formats_tiny_budget_without_scientific_notation(): void
+    {
+        $stub = $this->makeProcessStub(
+            stdout: json_encode(['result' => 'ok', 'total_cost_usd' => 0.01]),
+        );
+        $captured = [];
+
+        $runner = new ClaudeCodeRunner('claude', $this->captureFactory($captured, $stub));
+
+        $runner->runStage(
+            prompt: 'p',
+            jsonSchema: '{}',
+            allowedTools: [],
+            cwd: '/tmp',
+            maxBudgetUsd: 1.0e-5,
+        );
+
+        // (string) 1.0e-5 would emit "1.0E-5". number_format pins to fixed-point.
+        $this->assertContains('0.000010', $captured['argv']);
+        foreach ($captured['argv'] as $arg) {
+            $this->assertStringNotContainsString('E-', $arg);
+        }
     }
 
     // ─── Task 2 piggyback: ModelUsage::fromProviderCost ───────────────────────

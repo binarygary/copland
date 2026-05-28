@@ -78,7 +78,14 @@ class ClaudeCodeRunner
 
         if ($maxBudgetUsd !== null) {
             $argv[] = '--max-budget-usd';
-            $argv[] = (string) $maxBudgetUsd;
+            // sprintf forces fixed-point; (string) cast of small floats like
+            // 1.0e-5 would emit "1.0E-5", which the CLI may not accept. The
+            // %f conversion is locale-aware in general but only on the
+            // float-to-string emission of '.' vs ',' — sprintf runs in the
+            // PHP process locale, so callers under LC_NUMERIC=de_DE could
+            // still get a comma. Pin to C locale-equivalent via number_format
+            // (locale-independent when separators are explicit).
+            $argv[] = number_format($maxBudgetUsd, 6, '.', '');
         }
 
         // `--` terminates flag parsing so a prompt starting with '-' is not
