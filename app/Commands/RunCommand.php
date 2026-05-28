@@ -30,6 +30,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use LaravelZero\Framework\Commands\Command;
 use Symfony\Component\Console\Command\SignalableCommandInterface;
+use Symfony\Component\Process\Process;
 use Throwable;
 
 class RunCommand extends Command implements SignalableCommandInterface
@@ -258,6 +259,25 @@ class RunCommand extends Command implements SignalableCommandInterface
                     $this->warn("Warning: Ollama model '{$model}' is not on the known tool-capable list. Tool use may fail.");
                 }
                 $warnedModels[] = $model;
+            }
+
+            // Claude Code binary presence check — one warn per unique binary path.
+            // Uses `which <binary>` rather than `claude --version` (slower, requires
+            // auth — defer to first real invocation). This is purely a PATH probe.
+            $claudeStages = LlmClientFactory::claudeCodeStageConfigs($globalConfig, $repoConfig);
+            $checkedBinaries = [];
+            foreach ($claudeStages as $entry) {
+                $binary = $entry['binary_path'] ?? 'claude';
+                if (in_array($binary, $checkedBinaries, true)) {
+                    continue;
+                }
+                $checkedBinaries[] = $binary;
+
+                $probe = new Process(['which', $binary]);
+                $probe->run();
+                if (! $probe->isSuccessful()) {
+                    $this->warn("Warning: Claude Code binary '{$binary}' not found on PATH. The claude-code provider will fail at runtime. Install with `npm install -g @anthropic-ai/claude-code` or set `binary_path` in your llm config.");
+                }
             }
 
             $git = new GitService;
