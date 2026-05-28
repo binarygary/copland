@@ -4,7 +4,8 @@
 
 - ✅ **v1.0 Overnight Hardening** — Phases 1-13 shipped 2026-04-03 ([archive](milestones/v1.0-ROADMAP.md))
 - ✅ **v1.1 Multi-Provider & Asana Integration** — Phases 14-17 shipped 2026-04-09 ([archive](milestones/v1.1-ROADMAP.md))
-- 🚧 **v1.2 Onboarding** — Phases 18-19 (in progress)
+- ✅ **v1.2 Onboarding** — Phase 18 shipped 2026-05-26 (Phase 19 dropped — superseded by v2.0) ([archive](milestones/v1.2-ROADMAP.md))
+- 🚧 **v2.0 Godot Console** — Phases 19-22 (planned)
 
 ---
 
@@ -39,47 +40,115 @@
 
 </details>
 
+<details>
+<summary>✅ v1.2 Onboarding (Phase 18) — SHIPPED 2026-05-26</summary>
+
+- [x] Phase 18: Automate Command — completed 2026-04-09
+- [~] Phase 19: Init Wizard — dropped 2026-05-26 (superseded by v2.0; INIT-01..07 deferred to future onboarding milestone)
+
+</details>
+
 ---
 
-## v1.2 Onboarding
+## v2.0 Godot Console
+
+**Goal:** Recover the lost Godot prototype onto `main`, and grow a task-directory persistence layer in the PHP CLI so the read-only console shows live overnight-agent state.
 
 ### Phases
 
-- [x] **Phase 18: Automate Command** — Rename `copland setup` to `copland automate`; keep `setup` as a deprecated alias (completed 2026-04-09)
-- [ ] **Phase 19: Init Wizard** — Interactive `copland init` command guiding users from zero to a configured, running setup
+- [x] **Phase 19: Prototype Recovery + Console Launcher** — Restore the Godot prototype from the backup branch onto `main` and add `copland console` to launch it (completed 2026-05-27)
+- [x] **Phase 20: Task & Status Writer** — Orchestrator writes `task.md` and `status.md` per task and updates `status.md` on every lifecycle transition (completed 2026-05-27)
+- [x] **Phase 21: Per-Run Artifacts & Test Coverage** — Each run materializes a `runs/<run-id>/` subdirectory with PR/cost data, the existing JSONL log stays untouched, and Pest tests exercise the writer with a temporary `HOME` (completed 2026-05-27)
+- [x] **Phase 22: End-to-End Smoke + Documentation** — A real overnight run renders in the console without errors and both READMEs document the shipped console workflow
 
 ### Phase Details
 
-### Phase 18: Automate Command
-**Goal**: Users can run `copland automate` to install the macOS LaunchAgent; users running the old `copland setup` command are informed of the rename and the command still works
-**Depends on**: Nothing (first phase of milestone)
-**Requirements**: AUTO-01, AUTO-02
+#### Phase 19: Prototype Recovery + Console Launcher
+
+**Goal**: Restore the Godot 4.2+ prototype onto `main` so it can be opened and launched, and add a `copland console` PHP CLI subcommand that points the Godot project at `~/.copland/tasks/`.
+**Depends on**: Nothing (first phase of v2.0)
+**Requirements**: GODOT-01, GODOT-02, GODOT-03
 **Success Criteria** (what must be TRUE):
-  1. `copland automate` installs the macOS LaunchAgent with identical behavior to the current `copland setup`
-  2. `copland setup` prints a clear deprecation notice ("setup has been renamed to automate") then delegates to `copland automate` and completes successfully
-  3. `copland setup` is hidden from `copland --help` via `$hidden = true`; `copland automate` is the visible primary command
-**Plans**: 1 plan
+
+  1. `console-godot/` exists on `main` with `project.godot`, `scenes/Main.tscn`, `scripts/Main.gd`, `scripts/TaskLoader.gd`, `icon.svg`, `README.md`, `TODO.md`, and the existing `assets/{fonts,textures,themes}/` directories preserved
+  2. Opening `console-godot/project.godot` in Godot 4.2+ and pressing F5 launches the Copland Console without errors (empty-state rendering is acceptable since no task directories exist yet)
+  3. `copland console` is a registered Laravel Zero command that launches the Godot project pointed at `~/.copland/tasks/` and exits cleanly
+  4. `copland console` surfaces a clear error message if Godot is not installed or the `console-godot/` directory is missing
+
+**Plans**: 2 plans
 
 Plans:
-- [x] 18-01-PLAN.md — Create AutomateCommand (full logic) + rewrite SetupCommand as hidden deprecated wrapper; update tests
 
-### Phase 19: Init Wizard
-**Goal**: A new user can run `copland init` and be guided through every configuration step interactively, ending with a verified, working Copland setup — no documentation required
-**Depends on**: Phase 18
-**Requirements**: INIT-01, INIT-02, INIT-03, INIT-04, INIT-05, INIT-06, INIT-07
+- [x] 19-01-restore-godot-prototype-PLAN.md — Restore Godot prototype from backup branch as single checkout commit; manual F5 launch verification (GODOT-01, GODOT-02)
+- [x] 19-02-console-command-PLAN.md — Add `copland console` Laravel Zero command with preflight + macOS `open -a Godot` shell-out, plus Pest tests (GODOT-03)
+
+**UI hint**: yes
+
+#### Phase 20: Task & Status Writer
+
+**Goal**: When the orchestrator selects a task, it materializes `~/.copland/tasks/<repo>/<id>/task.md` once and updates `status.md` on every lifecycle transition so the console can read real run state.
+**Depends on**: Phase 19
+**Requirements**: TASK-01, TASK-02
 **Success Criteria** (what must be TRUE):
-  1. `copland init` starts an interactive wizard using Laravel Prompts; user is prompted for LLM provider choice (Anthropic / Ollama / OpenRouter) with Anthropic as the default
-  2. User is prompted for the credential appropriate to their provider (API key for Anthropic/OpenRouter, base URL for Ollama) and the value is written to `~/.copland.yml`
-  3. User is prompted to register at least one repo by GitHub slug and local checkout path; the repo entry is written to `~/.copland.yml`
-  4. Init validates that `gh auth token` succeeds and exits with a clear error message if it does not
-  5. Init makes a test call to the configured LLM provider and exits with a clear error message if the provider is unreachable or the credential is invalid
-  6. At the end of a successful init, user is offered the option to run `copland automate` immediately to install the scheduler; choosing yes installs it, choosing no exits cleanly
-**Plans**: TBD
+
+  1. On task selection, `RunOrchestratorService` writes `~/.copland/tasks/<repo>/<id>/task.md` containing the task title, body, repo slug, repo path, source URL, and `created_at` timestamp
+  2. On every orchestrator lifecycle transition (new → planning → executing → reviewing → complete | blocked) `status.md` is written/updated with the current state and a per-transition timestamp
+  3. The writer works for both GitHub issues (integer ID) and Asana tasks (string GID) without truncation or path collisions
+  4. A run that crashes mid-execution leaves `status.md` in a terminal state (`blocked` or equivalent) rather than a stale intermediate state
+
+**Plans**: 2 plans
+
+Plans:
+
+- [x] 20-01-PLAN.md — Build TaskDirectoryWriterService (atomic markdown writer for ~/.copland/tasks/) + Pest smoke test against temp HOME (TASK-01, TASK-02)
+- [x] 20-02-PLAN.md — Wire writer into RunOrchestratorService (8 lifecycle call sites + finally-block blocked write) and RunCommand composition root (TASK-01, TASK-02)
+
+#### Phase 21: Per-Run Artifacts & Test Coverage
+
+**Goal**: Each run captures its own audit trail under `runs/<run-id>/` alongside the existing JSONL log, and the entire task-directory writer is covered by Pest tests that never touch the developer's real `~/.copland/`.
+**Depends on**: Phase 20
+**Requirements**: TASK-03, TASK-04, TASK-05
+**Success Criteria** (what must be TRUE):
+
+  1. Each run writes a `~/.copland/tasks/<repo>/<id>/runs/<run-id>/` subdirectory containing at minimum the PR URL (or a structured failure reason) and the final cost summary
+  2. `~/.copland/logs/runs.jsonl` continues to be written with the same schema and content it had before this milestone — no existing log consumer regresses
+  3. Pest tests exercise the task-directory writer end-to-end using a temporary `HOME`, covering happy path, lifecycle transitions, and failure/blocked outcomes
+  4. PHPStan level 5 stays clean and the existing 132+ test suite continues to pass
+
+**Plans**: 3 plans
+
+Plans:
+
+- [x] 21-01-PLAN.md — Fix 6 PHPStan level-5 errors (mechanical: 2 return types, 3 orchestrator init/guard fixes, 1 HomeDirectory isset cleanup) + composer `analyse` script gains `--memory-limit=512M` (TASK-04)
+- [x] 21-02-PLAN.md — Extend TaskDirectoryWriterService with 3 new public methods (`writeRunStatus`, `writeRunOutcome`, `writeRunBlockedIfNotTerminal`) + thread `$runId` through `RunOrchestratorService::run()` (1 derivation + 7 paired writes + finally-arm blocked + outcome.md write via new `outcomePayload()` mapper); RunLogStore untouched (TASK-03, TASK-04)
+- [x] 21-03-PLAN.md — Expand `tests/Feature/TaskDirectoryWriterServiceTest.php` from 1 smoke test to 12-18 Pest cases against a temporary HOME covering all 11 D-18 axes; phase-gate TASK-04 negative assertion via `git diff` (TASK-03, TASK-04, TASK-05)
+
+#### Phase 22: End-to-End Smoke + Documentation
+
+**Goal**: A real overnight-agent run produces a task directory the Godot console renders without errors, and both the root and `console-godot` READMEs document the shipped workflow.
+**Depends on**: Phase 21
+**Requirements**: CONS-01, CONS-02, CONS-03
+**Success Criteria** (what must be TRUE):
+
+  1. A real overnight run against a configured repo produces `~/.copland/tasks/<repo>/<id>/` directories that `TaskLoader.gd` loads without errors and without schema drift — task titles, statuses, and run metadata all appear in the console panes
+  2. Root `README.md` documents installing Godot 4.2+, launching the console via `copland console`, and what each of the three panes (workflow states / task manifest / dossier) shows
+  3. `console-godot/README.md` matches what shipped — file paths, what counts as "real" data, and any divergence from the original prototype design are called out explicitly
+  4. The relationship between the new `~/.copland/tasks/` directory tree and the existing `~/.copland/logs/runs.jsonl` is documented so users know which is canonical for which purpose
+
+**Plans**: 2 plans
+
+Plans:
+
+- [x] 22-01-PLAN.md — Remove `merged` from `console-godot/scripts/TaskLoader.gd` STATES + live operator-driven smoke against `binarygary/copland` with D-02 10-item checklist sign-off (CONS-01) — completed 2026-05-27
+- [x] 22-02-PLAN.md — Root `README.md` new console section + D-06 stale-bit fixes + `console-godot/README.md` rewrite + `console-godot/TODO.md` light update + D-09 canonical-purpose split documented in both READMEs (CONS-02, CONS-03) — completed 2026-05-27
+
 **UI hint**: yes
 
 ### Progress Table
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 18. Automate Command | 1/1 | Complete   | 2026-04-09 |
-| 19. Init Wizard | 0/TBD | Not started | - |
+| 19. Prototype Recovery + Console Launcher | 2/2 | Complete    | 2026-05-27 |
+| 20. Task & Status Writer | 2/2 | Complete   | 2026-05-27 |
+| 21. Per-Run Artifacts & Test Coverage | 3/3 | Complete    | 2026-05-27 |
+| 22. End-to-End Smoke + Documentation | 2/2 | Complete    | 2026-05-27 |

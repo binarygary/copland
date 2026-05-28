@@ -1,0 +1,40 @@
+; Engine configuration file for the Copland visual console.
+; Open this folder in Godot 4.2+ to run.
+
+config_version=5
+
+[application]
+
+config/name="Copland Console"
+config/description="Visual control plane for the Copland overnight agent. Read-only prototype."
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.2", "GL Compatibility")
+boot_splash/show_image=false
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1680
+window/size/viewport_height=1050
+window/size/window_width_override=1680
+window/size/window_height_override=1050
+window/size/mode=2
+window/size/borderless=true
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep_height"
+window/per_pixel_transparency/allowed=false
+
+[input]
+
+ui_quit={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":81,"physical_keycode":0,"key_label":0,"unicode":0,"echo":false,"script":null)
+]
+}
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.102, 0.094, 0.082, 1)
+textures/canvas_textures/default_texture_filter=0

@@ -137,7 +137,7 @@ If no repo argument is provided:
 - Copland uses `repos:` from `~/.copland.yml` when configured.
 - Otherwise it runs against the current checkout.
 
-### `php ./copland setup --hour=2 --minute=0`
+### `php ./copland automate --hour=2 --minute=0`
 
 Installs or refreshes a per-user macOS LaunchAgent under `~/Library/LaunchAgents/` so Copland can run nightly without manual cron setup.
 
@@ -155,7 +155,69 @@ launchctl start com.binarygary.copland
 
 ### `php ./copland status`
 
-`status` exists as a command name, but it is not implemented yet. The stable morning-review path today is `~/.copland/logs/runs.jsonl`.
+`status` exists as a command name, but it is not implemented yet. For at-a-glance "what's running right now" use `php ./copland console` (the Godot visual surface, see "Console" section below). For "what happened over the last 30 nights" the canonical audit trail remains `~/.copland/logs/runs.jsonl`.
+
+## Console
+
+Copland ships with a Godot visual console for at-a-glance state of the overnight agent. It does not advance any task's lifecycle — that remains the CLI's job — but it does expose three limited write conveniences (see Keyboard below).
+
+### Prerequisites
+
+- Install Godot 4.2 or newer from https://godotengine.org/.
+
+### Launch
+
+```bash
+php ./copland console
+```
+
+This preflights Godot and the `console-godot/` project then shells out via macOS `open -a Godot` (macOS only).
+
+### Layout
+
+```
+┌─ COPLAND ───────────────────────────────────────────────────────┐
+│ WORKFLOW STATES  │       TASK MANIFEST       │    DOSSIER       │
+│ • ALL TASKS  06  │  ▸ T002  Verifier should… │  T002            │
+│ • NEW        01  │  ▸ T001  Wire footer to…  │  EXECUTING       │
+│ • PLANNING   01  │    T003  Selector promp…  │  ...             │
+│ • EXECUTING  01  │    ...                    │                  │
+│ ...              │                           │                  │
+└─────────────────────────────────────────────────────────────────┘
+  ↑/↓ select   TAB cycle pane   ENTER drill in   ESC back
+```
+
+### Panes
+
+- **Workflow States** — counts per state across all tasks under `~/.copland/tasks/`.
+- **Task Manifest** — title + state badge for each task, scoped by the selected state filter.
+- **Dossier** — drill-in detail for the selected task — body markdown plus the run history from `runs/`.
+
+### Keyboard
+
+| Key       | Action                                                       |
+|-----------|--------------------------------------------------------------|
+| `↑` / `↓` | Move selection within the focused pane                       |
+| `TAB`     | Cycle focus between states / tasks panes                     |
+| `ENTER`   | From states pane: jump into task list                        |
+| `ESC`     | From tasks: back to states; from states: clear state filter  |
+| `S`       | Shell out to `php ./copland status` and append to the ops log |
+| `A`       | Register a repository (appends to `~/.copland/console-repos.txt`) |
+| `E`       | Edit the selected task's `notes.md` in the on-disk task dir   |
+
+A `Q quit` shortcut appears in some legacy UI text but is not wired up — close the window or press `Cmd-Q`. See `console-godot/README.md` for the full divergence notes.
+
+### Where data lives
+
+Copland writes to two surfaces that overlap by design but serve different purposes.
+
+`~/.copland/tasks/<repo>/<id>/` is **live console state**: human-readable markdown with YAML frontmatter, mutating per lifecycle transition. It is the source of truth for what the Godot console renders — ephemeral mid-run, terminal state pins after the run completes.
+
+`~/.copland/logs/runs.jsonl` is an **append-only audit trail**: one JSON record per `copland run` invocation, never modified after append, not consumed by the console — canonical for cost analytics and retrospective grep.
+
+What's running right now? → `tasks/`. What happened over the last 30 nights? → `runs.jsonl`. They overlap by design — the same run produces records in both — but each surface is the wrong tool for the other question.
+
+Deeper detail in [`console-godot/README.md`](console-godot/README.md).
 
 ## Workflow
 
@@ -164,7 +226,7 @@ launchctl start com.binarygary.copland
 3. Label candidate GitHub issues with `agent-ready`.
 4. Run `php ./copland issues` if you want to inspect the current queue.
 5. Run `php ./copland plan` to preview the contract for the next issue.
-6. Run `php ./copland run` manually, or install nightly automation with `php ./copland setup`.
+6. Run `php ./copland run` manually, or install nightly automation with `php ./copland automate`.
 7. Review `~/.copland/logs/runs.jsonl` and any draft PRs the next morning.
 
 ## Safety Model
@@ -187,7 +249,7 @@ tail -n 5 ~/.copland/logs/runs.jsonl
 
 Each line is a JSON record containing repo, issue, status, timestamps, decision path, and usage data.
 
-For the full nightly automation flow, see [docs/overnight-setup.md](/Users/binarygary/projects/binarygary/copland/docs/overnight-setup.md).
+For the full nightly automation flow, see [docs/overnight-setup.md](docs/overnight-setup.md).
 
 ## Scope Notes
 
