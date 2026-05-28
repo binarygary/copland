@@ -198,7 +198,11 @@ class ClaudePlannerService
             return "Error: file not found: {$normalizedPath}";
         }
 
-        $content = (string) file_get_contents($fullPath);
+        $content = file_get_contents($fullPath);
+        if ($content === false) {
+            return "Error: could not read file: {$normalizedPath}";
+        }
+
         $lines = preg_split("/\r\n|\n|\r/", $content) ?: [];
         $maxLines = $policy->readFileMaxLines();
 

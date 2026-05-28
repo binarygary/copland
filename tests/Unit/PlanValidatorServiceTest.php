@@ -145,3 +145,21 @@ it('rejects a changes entry missing a reason', function () {
 
     expect($errors)->toContain("changes[0] is missing 'reason'");
 });
+
+it('rejects a changes entry whose old and new are identical (no-op)', function () {
+    $plan = makeValidatorPlan([
+        'filesToChange' => ['src/file.txt'],
+        'changes' => [
+            [
+                'file' => 'src/file.txt',
+                'old' => 'foo',
+                'new' => 'foo',
+                'reason' => 'wastes a round',
+            ],
+        ],
+    ]);
+
+    $errors = (new PlanValidatorService)->validate($plan, defaultValidatorProfile());
+
+    expect($errors)->toContain("changes[0] has identical 'old' and 'new' (no-op)");
+});

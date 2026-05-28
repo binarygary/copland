@@ -89,6 +89,14 @@ class PlanValidatorService
             if (! isset($change['reason']) || ! is_string($change['reason']) || $change['reason'] === '') {
                 $errors[] = "changes[{$index}] is missing 'reason'";
             }
+
+            if (
+                array_key_exists('old', $change) && is_string($change['old']) && $change['old'] !== ''
+                && array_key_exists('new', $change) && is_string($change['new'])
+                && $change['old'] === $change['new']
+            ) {
+                $errors[] = "changes[{$index}] has identical 'old' and 'new' (no-op)";
+            }
         }
 
         return $errors;
