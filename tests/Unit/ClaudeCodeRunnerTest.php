@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Data\ModelUsage;
 use App\Support\ClaudeCodeRunner;
 use RuntimeException;
 use Tests\TestCase;
@@ -259,4 +260,18 @@ class ClaudeCodeRunnerTest extends TestCase
         $this->assertNotContains('--max-budget-usd', $captured['argv']);
     }
 
+    // ─── Task 2 piggyback: ModelUsage::fromProviderCost ───────────────────────
+    // Lives here for now because ClaudeCodeRunner is the only producer of providerCostUsd.
+
+    public function test_model_usage_from_provider_cost_zeros_tokens_and_carries_cost(): void
+    {
+        $usage = ModelUsage::fromProviderCost('claude-code/sonnet', 0.0123);
+
+        $this->assertSame('claude-code/sonnet', $usage->model);
+        $this->assertSame(0, $usage->inputTokens);
+        $this->assertSame(0, $usage->outputTokens);
+        $this->assertSame(0, $usage->cacheWriteTokens);
+        $this->assertSame(0, $usage->cacheReadTokens);
+        $this->assertSame(0.0123, $usage->estimatedCostUsd);
+    }
 }
