@@ -57,12 +57,21 @@ class ClaudeCodeRunner
             '--json-schema', $jsonSchema,
         ];
 
-        if ($allowedTools !== []) {
+        // Pass each tool as a separate --allowedTools value so patterns containing
+        // spaces (e.g. "Bash(git status)") round-trip without being mis-tokenized
+        // by the CLI's space/comma splitter.
+        foreach ($allowedTools as $tool) {
             $argv[] = '--allowedTools';
-            $argv[] = implode(' ', $allowedTools);
+            $argv[] = $tool;
         }
 
         if ($model !== null) {
+            // Defensive: model names are well-formed identifiers; reject anything
+            // that could be interpreted as a flag or shell metacharacter even
+            // though array-form Process bypasses the shell.
+            if (! preg_match('/^[A-Za-z0-9._:-]+$/', $model)) {
+                throw new RuntimeException("claude-code: invalid model name '{$model}'");
+            }
             $argv[] = '--model';
             $argv[] = $model;
         }
@@ -72,7 +81,9 @@ class ClaudeCodeRunner
             $argv[] = (string) $maxBudgetUsd;
         }
 
-        // Prompt MUST be the last positional arg.
+        // `--` terminates flag parsing so a prompt starting with '-' is not
+        // misread as a CLI flag.
+        $argv[] = '--';
         $argv[] = $prompt;
 
         $process = $this->buildProcess($argv, $cwd, $timeoutSeconds);

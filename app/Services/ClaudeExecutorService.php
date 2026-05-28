@@ -74,7 +74,9 @@ class ClaudeExecutorService
         $totalOutputTokens = 0;
         $totalCacheWriteTokens = 0;
         $totalCacheReadTokens = 0;
-        $totalProviderCostUsd = 0.0;
+        // Null = no round reported a provider cost (fall through to token-based estimate).
+        // Once any round reports one, this becomes a float accumulator across all rounds.
+        $totalProviderCostUsd = null;
 
         while (true) {
             $round++;
@@ -107,7 +109,9 @@ class ClaudeExecutorService
             $totalOutputTokens += $response->usage->outputTokens;
             $totalCacheWriteTokens += $response->usage->cacheWriteTokens;
             $totalCacheReadTokens += $response->usage->cacheReadTokens;
-            $totalProviderCostUsd += $response->usage->providerCostUsd ?? 0.0;
+            if ($response->usage->providerCostUsd !== null) {
+                $totalProviderCostUsd = ($totalProviderCostUsd ?? 0.0) + $response->usage->providerCostUsd;
+            }
             $this->updateSnapshot($snapshot, $startTime, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens, $totalProviderCostUsd);
 
             $toolUses = 0;
@@ -230,7 +234,7 @@ class ClaudeExecutorService
         return (string) file_get_contents(base_path('resources/prompts/executor.md'));
     }
 
-    private function updateSnapshot(?RunProgressSnapshot $snapshot, float $startTime, int $totalInputTokens, int $totalOutputTokens, int $cacheWrite = 0, int $cacheRead = 0, float $providerCostUsd = 0.0): void
+    private function updateSnapshot(?RunProgressSnapshot $snapshot, float $startTime, int $totalInputTokens, int $totalOutputTokens, int $cacheWrite = 0, int $cacheRead = 0, ?float $providerCostUsd = null): void
     {
         if ($snapshot === null) {
             return;
@@ -243,13 +247,14 @@ class ClaudeExecutorService
     /**
      * Build a ModelUsage for the executor's accumulated counters.
      *
-     * When the wrapped provider reports a dollar cost (e.g. claude-code via
-     * `providerCostUsd`), bypass AnthropicCostEstimator and emit a token-less
-     * ModelUsage. Otherwise fall back to the per-model rate table.
+     * When the wrapped provider reported a dollar cost on any round (claude-code
+     * sets `providerCostUsd`), bypass AnthropicCostEstimator and emit a
+     * token-less ModelUsage — even when the accumulated cost is exactly 0
+     * (free/cached run). Otherwise fall back to the per-model rate table.
      */
-    private function buildUsage(int $in, int $out, int $cw, int $cr, float $providerCost): ModelUsage
+    private function buildUsage(int $in, int $out, int $cw, int $cr, ?float $providerCost): ModelUsage
     {
-        if ($providerCost > 0.0) {
+        if ($providerCost !== null) {
             return ModelUsage::fromProviderCost($this->model, $providerCost);
         }
 

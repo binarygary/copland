@@ -11,7 +11,7 @@ Copland is a PHP CLI tool that automatically resolves GitHub issues overnight us
 
 - **Tech stack**: PHP 8.2+ / Laravel Zero — established, not changing
 - **Auth**: Must use `gh` CLI for GitHub auth — no credential storage
-- **Safety**: All executor tool calls must be policy-validated before execution
+- **Safety**: All executor tool calls must be policy-validated before execution. Exception: the `claude-code` provider delegates tool execution to the Claude Code CLI, which enforces its own permissions via the per-stage `--allowedTools` whitelist (set in `LlmClientFactory::buildClaudeCode`); Copland's `ExecutorPolicy` (blocked_paths, thrashing detection, in-flight max-files/lines) does not run on that path. The plan validator and the post-run verifier still apply.
 - **Scope**: Max 3 files / 250 lines changed per issue — enforced by planner + verifier
 <!-- GSD:project-end -->
 

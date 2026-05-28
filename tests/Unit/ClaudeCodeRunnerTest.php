@@ -112,16 +112,23 @@ class ClaudeCodeRunnerTest extends TestCase
         $this->assertSame('--json-schema', $argv[7]);
         $this->assertSame('{"type":"object"}', $argv[8]);
 
-        // Optional flags present
-        $this->assertContains('--allowedTools', $argv);
-        $this->assertContains('Read Edit Bash(git status)', $argv);
+        // Each tool gets its own --allowedTools flag so patterns containing
+        // spaces (e.g. "Bash(git status)") survive the CLI parser intact.
+        $allowedToolsCount = count(array_keys($argv, '--allowedTools', true));
+        $this->assertSame(3, $allowedToolsCount);
+        $this->assertContains('Read', $argv);
+        $this->assertContains('Edit', $argv);
+        $this->assertContains('Bash(git status)', $argv);
+
         $this->assertContains('--model', $argv);
         $this->assertContains('sonnet', $argv);
         $this->assertContains('--max-budget-usd', $argv);
         $this->assertContains('0.5', $argv);
 
-        // Prompt MUST be the last positional arg
-        $this->assertSame('do the thing', $argv[count($argv) - 1]);
+        // Prompt is preceded by `--` and is the final positional arg.
+        $last = count($argv) - 1;
+        $this->assertSame('do the thing', $argv[$last]);
+        $this->assertSame('--', $argv[$last - 1]);
 
         // Factory received cwd + timeout
         $this->assertSame('/tmp/workspace', $captured['cwd']);
