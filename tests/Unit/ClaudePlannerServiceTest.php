@@ -231,3 +231,71 @@ it('planner returns empty changes when the model emits an empty array', function
         deletePlannerDirectory($workspace);
     }
 });
+
+it('planner drops changes entries for files it did not read this loop', function () {
+    $workspace = makePlannerWorkspace();
+    $readRelative = 'src/read.txt';
+    $unreadRelative = 'src/unread.txt';
+    mkdir($workspace.'/src', 0755, true);
+    file_put_contents($workspace.'/'.$readRelative, "some line\n");
+    file_put_contents($workspace.'/'.$unreadRelative, "other line\n");
+
+    $finalJson = fullPlanJsonWith([
+        'files_to_change' => [$readRelative, $unreadRelative],
+        'files_to_read' => [$readRelative, $unreadRelative],
+        'changes' => [
+            ['file' => $readRelative,   'old' => 'some line',  'new' => 'changed',    'reason' => 'real'],
+            ['file' => $unreadRelative, 'old' => 'other line', 'new' => 'fabricated', 'reason' => 'unread'],
+        ],
+    ]);
+
+    [$service] = array_values(makePlanner([
+        plannerResponse('tool_calls', [plannerToolUseBlock('t1', 'read_file', ['path' => $readRelative])]),
+        plannerResponse('stop', [plannerTextBlock(json_encode($finalJson, JSON_PRETTY_PRINT))]),
+    ]));
+
+    try {
+        $result = $service->planTask(
+            ['workspace_path' => $workspace, 'max_planner_rounds' => 4],
+            ['number' => 1, 'title' => 'partial', 'body' => '', 'html_url' => ''],
+        );
+
+        expect($result->changes)->toHaveCount(1);
+        expect($result->changes[0]['file'])->toBe($readRelative);
+    } finally {
+        deletePlannerDirectory($workspace);
+    }
+});
+
+it('planner workspace path falls back to repo_path before getcwd', function () {
+    $workspace = makePlannerWorkspace();
+    $fixtureRelative = 'src/file.txt';
+    mkdir($workspace.'/src', 0755, true);
+    file_put_contents($workspace.'/'.$fixtureRelative, "hello\n");
+
+    $finalJson = fullPlanJsonWith([
+        'files_to_change' => [$fixtureRelative],
+        'files_to_read' => [$fixtureRelative],
+        'changes' => [
+            ['file' => $fixtureRelative, 'old' => 'hello', 'new' => 'world', 'reason' => 'demo'],
+        ],
+    ]);
+
+    [$service] = array_values(makePlanner([
+        plannerResponse('tool_calls', [plannerToolUseBlock('t1', 'read_file', ['path' => $fixtureRelative])]),
+        plannerResponse('stop', [plannerTextBlock(json_encode($finalJson, JSON_PRETTY_PRINT))]),
+    ]));
+
+    try {
+        // No workspace_path — should fall back to repo_path.
+        $result = $service->planTask(
+            ['repo_path' => $workspace, 'max_planner_rounds' => 4],
+            ['number' => 1, 'title' => 'fallback', 'body' => '', 'html_url' => ''],
+        );
+
+        expect($result->changes)->toHaveCount(1);
+        expect($result->changes[0]['file'])->toBe($fixtureRelative);
+    } finally {
+        deletePlannerDirectory($workspace);
+    }
+});

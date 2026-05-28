@@ -49,7 +49,9 @@ class ClaudePlannerService
             $promptTemplate
         );
 
-        $workspacePath = $repoProfile['workspace_path'] ?? getcwd();
+        $workspacePath = $repoProfile['workspace_path']
+            ?? $repoProfile['repo_path']
+            ?? getcwd();
         $maxRounds = (int) ($repoProfile['max_planner_rounds'] ?? 6);
         $policy = new ExecutorPolicy(
             blockedPaths: $repoProfile['blocked_paths'] ?? [],
@@ -65,6 +67,12 @@ class ClaudePlannerService
         $totalOutputTokens = 0;
         $totalCacheWriteTokens = 0;
         $totalCacheReadTokens = 0;
+
+        // Track normalized paths the planner successfully read this loop so we
+        // can drop any `changes` entry for a file the planner never actually
+        // saw — the `old` text for unread files is hallucinated and would
+        // blow up the executor's replace_in_file.
+        $readPaths = [];
 
         while (true) {
             $round++;
@@ -115,6 +123,16 @@ class ClaudePlannerService
                 );
 
                 $changes = is_array($json['changes'] ?? null) ? $json['changes'] : [];
+                // Enforce the contract: a `changes` entry's `file` MUST be one
+                // the planner read via read_file in this loop. Drop the rest —
+                // the executor will fall back to `steps` for those edits.
+                $changes = array_values(array_filter(
+                    $changes,
+                    fn ($change): bool => is_array($change)
+                        && isset($change['file'])
+                        && is_string($change['file'])
+                        && isset($readPaths[$change['file']])
+                ));
 
                 return new PlanResult(
                     decision: $json['decision'],
@@ -150,6 +168,7 @@ class ClaudePlannerService
                         (array) ($block['input'] ?? []),
                         $workspacePath,
                         $policy,
+                        $readPaths,
                     );
                 } catch (Throwable $e) {
                     $isError = true;
@@ -175,7 +194,10 @@ class ClaudePlannerService
         }
     }
 
-    private function dispatchTool(string $name, array $input, string $workspacePath, ExecutorPolicy $policy): string
+    /**
+     * @param  array<string, true>  $readPaths  Tracks normalized paths successfully read.
+     */
+    private function dispatchTool(string $name, array $input, string $workspacePath, ExecutorPolicy $policy, array &$readPaths): string
     {
         if ($name !== 'read_file') {
             throw new PolicyViolationException("Planner cannot use tool '{$name}' (read_file only)");
@@ -186,10 +208,13 @@ class ClaudePlannerService
             throw new PolicyViolationException("Tool 'read_file' requires a non-empty string 'path' field");
         }
 
-        return $this->readFile($workspacePath, $path, $policy);
+        return $this->readFile($workspacePath, $path, $policy, $readPaths);
     }
 
-    private function readFile(string $workspacePath, string $path, ExecutorPolicy $policy): string
+    /**
+     * @param  array<string, true>  $readPaths  Tracks normalized paths successfully read.
+     */
+    private function readFile(string $workspacePath, string $path, ExecutorPolicy $policy, array &$readPaths): string
     {
         $normalizedPath = $policy->assertToolPathAllowed($path, 'read_file');
         $fullPath = rtrim($workspacePath, '/').'/'.ltrim($normalizedPath, '/');
@@ -202,6 +227,8 @@ class ClaudePlannerService
         if ($content === false) {
             return "Error: could not read file: {$normalizedPath}";
         }
+
+        $readPaths[$normalizedPath] = true;
 
         $lines = preg_split("/\r\n|\n|\r/", $content) ?: [];
         $maxLines = $policy->readFileMaxLines();
