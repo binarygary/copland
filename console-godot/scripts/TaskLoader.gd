@@ -253,6 +253,15 @@ static func _read_frontmatter(file_path: String) -> Dictionary:
         var val := stripped.substr(colon + 1).strip_edges()
         val = val.trim_prefix("'").trim_suffix("'")
         val = val.trim_prefix("\"").trim_suffix("\"")
+        # Unescape the 4 sequences the PHP writer escapes (\\, \", \n, \r).
+        # SOH (0x01) is the sentinel for an escaped backslash so the final
+        # backslash-restore step doesn't double-decode the other sequences.
+        var soh := String.chr(1)
+        val = val.replace("\\\\", soh)
+        val = val.replace("\\\"", "\"")
+        val = val.replace("\\n", "\n")
+        val = val.replace("\\r", "\r")
+        val = val.replace(soh, "\\")
         out[key] = val
     return out
 
