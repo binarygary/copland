@@ -545,3 +545,84 @@ it('writeStatus and writeRunStatus on the same task do not cross-pollute lastSta
 
     $_SERVER['HOME'] = $originalHome;
 });
+
+it('escapes newlines in frontmatter so outcome.md stays parseable on multi-line failure_reason (BL-01)', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $home = sys_get_temp_dir().'/copland-bl01-'.uniqid();
+    mkdir($home, 0755, true);
+    $_SERVER['HOME'] = $home;
+
+    $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-28T00:00:00Z');
+
+    $multiline = "verifier failed: missing assertion\nstderr: PHPStan reports 3 errors\n  - line 42 of foo.php\n  - line 88 of bar.php\nbacktrace: ...";
+
+    $writer->writeRunOutcome('owner/repo', 99, '2026-05-28T00-00-00Z', [
+        'run_id' => '2026-05-28T00-00-00Z',
+        'status' => 'blocked',
+        'pr_number' => null,
+        'pr_url' => null,
+        'cost_usd' => '0.012',
+        'started_at' => '2026-05-28T00:00:00Z',
+        'finished_at' => '2026-05-28T00:01:30Z',
+        'failure_reason' => $multiline,
+        'partial' => false,
+    ]);
+
+    $path = $home.'/.copland/tasks/owner__repo/99/runs/2026-05-28T00-00-00Z/outcome.md';
+    $content = file_get_contents($path);
+
+    // The frontmatter region (between the first two `---` lines) must contain NO
+    // literal newlines inside any value — embedded newlines must be escaped to \n.
+    $matches = [];
+    preg_match('/^---\n(.*?)\n---/s', $content, $matches);
+    expect($matches)->not->toBeEmpty('outcome.md must have a proper closing --- delimiter');
+
+    $frontmatterRegion = $matches[1];
+
+    // Each line in the frontmatter region must be a `key: "value"` pair — no leaked content lines.
+    foreach (explode("\n", $frontmatterRegion) as $line) {
+        expect($line)->toMatch('/^[a-z_]+: ".*"$/', "Leaked content in frontmatter: {$line}");
+    }
+
+    // The failure_reason value must contain the literal escape sequence "\n", not a real newline.
+    expect($frontmatterRegion)->toContain('failure_reason: "verifier failed: missing assertion\\nstderr: PHPStan reports 3 errors\\n  - line 42 of foo.php\\n  - line 88 of bar.php\\nbacktrace: ..."');
+
+    // All 9 D-05 keys must survive the frontmatter — in particular `partial` which sits after failure_reason.
+    foreach (['run_id', 'status', 'pr_number', 'pr_url', 'cost_usd', 'started_at', 'finished_at', 'failure_reason', 'partial'] as $key) {
+        expect($content)->toMatch('/^'.$key.': "/m', "Missing key {$key} after newline-escape — frontmatter parse would break");
+    }
+
+    // Quote-escape symmetry: a value containing a double-quote should be escaped.
+    $writer->writeRunOutcome('owner/repo', 99, '2026-05-28T00-01-00Z', [
+        'run_id' => '2026-05-28T00-01-00Z',
+        'status' => 'pr_open',
+        'pr_number' => '7',
+        'pr_url' => 'https://x/y',
+        'cost_usd' => '0.001',
+        'started_at' => '2026-05-28T00:01:00Z',
+        'finished_at' => '2026-05-28T00:01:01Z',
+        'failure_reason' => 'said "hello" then crashed',
+        'partial' => false,
+    ]);
+    $path2 = $home.'/.copland/tasks/owner__repo/99/runs/2026-05-28T00-01-00Z/outcome.md';
+    $content2 = file_get_contents($path2);
+    expect($content2)->toContain('failure_reason: "said \\"hello\\" then crashed"');
+
+    // Backslash-escape symmetry: a value containing a backslash should be escaped to \\.
+    $writer->writeRunOutcome('owner/repo', 99, '2026-05-28T00-02-00Z', [
+        'run_id' => '2026-05-28T00-02-00Z',
+        'status' => 'blocked',
+        'pr_number' => null,
+        'pr_url' => null,
+        'cost_usd' => '0',
+        'started_at' => '2026-05-28T00:02:00Z',
+        'finished_at' => '2026-05-28T00:02:01Z',
+        'failure_reason' => 'path: C:\\Users\\foo',
+        'partial' => false,
+    ]);
+    $path3 = $home.'/.copland/tasks/owner__repo/99/runs/2026-05-28T00-02-00Z/outcome.md';
+    $content3 = file_get_contents($path3);
+    expect($content3)->toContain('failure_reason: "path: C:\\\\Users\\\\foo"');
+
+    $_SERVER['HOME'] = $originalHome;
+});

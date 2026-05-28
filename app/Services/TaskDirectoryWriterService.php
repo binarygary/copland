@@ -192,7 +192,14 @@ class TaskDirectoryWriterService
         $rendered = '';
 
         foreach ($pairs as $key => $value) {
-            $escaped = str_replace(['\\', '"'], ['\\\\', '\\"'], (string) $value);
+            // Escape \, ", \n, \r so the GDScript reader's line-based frontmatter
+            // termination heuristic doesn't break on embedded newlines in values like
+            // failure_reason (which can contain stderr/diff snippets).
+            $escaped = str_replace(
+                ["\\", "\"", "\n", "\r"],
+                ['\\\\', '\\"', '\\n', '\\r'],
+                (string) $value
+            );
             $rendered .= "{$key}: \"{$escaped}\"\n";
         }
 
