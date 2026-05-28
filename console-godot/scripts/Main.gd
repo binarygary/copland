@@ -403,9 +403,6 @@ func _input(event: InputEvent) -> void:
         KEY_S:
             _spawn_copland("STATUS", PackedStringArray(["status"]))
             get_viewport().set_input_as_handled()
-        KEY_N:
-            _action_new_task()
-            get_viewport().set_input_as_handled()
         KEY_A:
             _action_add_repo()
             get_viewport().set_input_as_handled()
@@ -1388,7 +1385,7 @@ func _set_footer_clusters(mode: String) -> void:
         clusters = [
             {"label": "NAVIGATION", "commands": [["↑ ↓", "SELECT"], ["TAB", "CYCLE PANE"]]},
             {"label": "ACTION",     "commands": [["ENTER", "DRILL IN"], ["ESC", "BACK"]]},
-            {"label": "CREATE",     "commands": [["A", "ADD REPO"], ["N", "NEW TASK"]]},
+            {"label": "CREATE",     "commands": [["A", "ADD REPO"]]},
             {"label": "UTILITY",    "commands": [["S", "STATUS"]]},
         ]
     for i in clusters.size():
@@ -1826,31 +1823,15 @@ func _current_repo_path() -> String:
 
 # ── Operations: new task, add repo, edit notes ───────────────────────────────
 
-func _action_new_task() -> void:
-    _show_modal(
-        "NEW TASK",
-        "Title for the new task. Will be created in repo: " + _display_repo_path(),
-        "task title",
-        "",
-        _on_new_task_submit)
+# _action_new_task / _on_new_task_submit removed: they shelled out to
+# `copland task create`, which is not a registered PHP CLI command — the
+# call would always fail. Task creation is intentionally CLI-only via
+# `copland run` against a GitHub issue. See Copilot review #4 on PR #4.
 
 
 func _display_repo_path() -> String:
     var p := _current_repo_path()
     return p if p != "" else "(current working directory)"
-
-
-func _on_new_task_submit(text: String) -> void:
-    var title := text.strip_edges()
-    if title == "":
-        _append_ops_log("New task cancelled — empty title.", true)
-        return
-    var args := PackedStringArray(["task", "create", title])
-    var repo := _current_repo_path()
-    if repo != "":
-        args.append("--repo")
-        args.append(repo)
-    _spawn_copland("NEW TASK", args)
 
 
 func _action_add_repo() -> void:

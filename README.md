@@ -159,7 +159,7 @@ launchctl start com.binarygary.copland
 
 ## Console
 
-Copland ships with a read-only Godot visual console for at-a-glance state of the overnight agent.
+Copland ships with a Godot visual console for at-a-glance state of the overnight agent. It does not advance any task's lifecycle — that remains the CLI's job — but it does expose three limited write conveniences (see Keyboard below).
 
 ### Prerequisites
 
@@ -184,7 +184,7 @@ This preflights Godot and the `console-godot/` project then shells out via macOS
 │ • EXECUTING  01  │    ...                    │                  │
 │ ...              │                           │                  │
 └─────────────────────────────────────────────────────────────────┘
-  ↑/↓ select   TAB cycle pane   ENTER drill in   ESC back   Q quit
+  ↑/↓ select   TAB cycle pane   ENTER drill in   ESC back
 ```
 
 ### Panes
@@ -195,13 +195,17 @@ This preflights Godot and the `console-godot/` project then shells out via macOS
 
 ### Keyboard
 
-| Key       | Action                                     |
-|-----------|--------------------------------------------|
-| `↑` / `↓` | Move selection within the focused pane     |
-| `TAB`     | Cycle focus between states / tasks panes   |
-| `ENTER`   | From states pane: jump into task list      |
-| `ESC`     | From tasks: back to states; from states: clear state filter |
-| `Q`       | Quit                                       |
+| Key       | Action                                                       |
+|-----------|--------------------------------------------------------------|
+| `↑` / `↓` | Move selection within the focused pane                       |
+| `TAB`     | Cycle focus between states / tasks panes                     |
+| `ENTER`   | From states pane: jump into task list                        |
+| `ESC`     | From tasks: back to states; from states: clear state filter  |
+| `S`       | Shell out to `php ./copland status` and append to the ops log |
+| `A`       | Register a repository (appends to `~/.copland/console-repos.txt`) |
+| `E`       | Edit the selected task's `notes.md` in the on-disk task dir   |
+
+A `Q quit` shortcut appears in some legacy UI text but is not wired up — close the window or press `Cmd-Q`. See `console-godot/README.md` for the full divergence notes.
 
 ### Where data lives
 

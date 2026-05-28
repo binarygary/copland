@@ -63,18 +63,23 @@ would write `merged` is deferred to v2.1.
 │ • EXECUTING  01  │    ...                    │                  │
 │ ...              │                           │                  │
 └─────────────────────────────────────────────────────────────────┘
-  ↑/↓ select   TAB cycle pane   ENTER drill in   ESC back   Q quit
+  ↑/↓ select   TAB cycle pane   ENTER drill in   ESC back
 ```
 
 ## Keyboard
 
-| Key       | Action                                     |
-|-----------|--------------------------------------------|
-| `↑` / `↓` | Move selection within the focused pane     |
-| `TAB`     | Cycle focus between states / tasks panes   |
-| `ENTER`   | From states pane: jump into task list      |
-| `ESC`     | From tasks: back to states; from states: clear state filter |
-| `Q`       | Quit                                       |
+| Key       | Action                                                       |
+|-----------|--------------------------------------------------------------|
+| `↑` / `↓` | Move selection within the focused pane                       |
+| `TAB`     | Cycle focus between states / tasks panes                     |
+| `ENTER`   | From states pane: jump into task list                        |
+| `ESC`     | From tasks: back to states; from states: clear state filter  |
+| `S`       | Shell out to `php ./copland status` and append to the ops log |
+| `A`       | Register a repository (writes to `~/.copland/console-repos.txt`) |
+| `E`       | Edit the selected task's `notes.md` in the on-disk task dir   |
+
+A `Q quit` key is mentioned in some legacy UI text but is not wired up in
+this build — close the window or press `Cmd-Q` instead.
 
 ## Data — real vs. sample
 
@@ -110,14 +115,34 @@ nights? → `runs.jsonl`.
 - The original "Real / Sample" path string was
   `~/.copland/tasks/<repo>/<id>/{task.md, status.md}`; the shipped layout
   is the full tree shown in `## Path contract` above.
+- The original prototype framed itself as strictly read-only, but the
+  restored Main.gd ships with limited write actions wired to keyboard
+  shortcuts: `S` shells out to `php ./copland status`, `A` appends to
+  `~/.copland/console-repos.txt`, and `E` edits a task's `notes.md` on
+  disk. A `KEY_N → copland task create` shell-out also shipped in the
+  prototype but pointed at a CLI command that does not exist; it was
+  removed in PR #4 (Copilot review #4).
+
+## Limited write actions (this build)
+
+- `S` — read-only shell-out to `php ./copland status`; output goes to
+  the in-app ops log only.
+- `A` — append the entered path to `~/.copland/console-repos.txt`. This
+  is the only on-disk write outside `~/.copland/tasks/` body files.
+- `E` — open the selected task's `notes.md` for editing in a modal; the
+  edited content is saved back to `notes.md` in the task directory.
 
 ## Non-goals (this prototype)
 
-- No editing, task creation, or workflow transitions.
-- No shell-out, AI execution, or GitHub calls.
+- No workflow transitions, no PR creation, no GitHub calls, no AI
+  execution. The console does not advance a task's lifecycle state —
+  only the PHP CLI's `copland run` does that.
+- No task creation (the prototype's `KEY_N` was wired to a non-existent
+  CLI command; removed in PR #4).
 - No animations beyond focus-state changes.
 
-These belong in the CLI; the console is purely a visual layer.
+Lifecycle work belongs in the CLI; the console is a visual layer plus
+the three limited write conveniences above.
 
 ## Visual direction
 
