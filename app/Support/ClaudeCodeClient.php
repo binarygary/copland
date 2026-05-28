@@ -63,9 +63,14 @@ class ClaudeCodeClient implements LlmClient
             maxBudgetUsd: $this->maxBudgetUsd,
         );
 
-        $resultText = is_string($envelope['result'])
-            ? $envelope['result']
-            : (string) json_encode($envelope['result']);
+        $structured = $envelope['raw']['structured_output'] ?? null;
+        if ($structured !== null) {
+            $resultText = (string) json_encode($structured);
+        } elseif (is_string($envelope['result'])) {
+            $resultText = $envelope['result'];
+        } else {
+            $resultText = (string) json_encode($envelope['result']);
+        }
 
         return new LlmResponse(
             content: [
