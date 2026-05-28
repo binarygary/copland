@@ -26,7 +26,7 @@ class ClaudeCodeClientTest extends TestCase
      */
     private function makeRunnerStub(array $envelope, array &$captured): ClaudeCodeRunner
     {
-        return new class ($envelope, $captured) extends ClaudeCodeRunner
+        return new class($envelope, $captured) extends ClaudeCodeRunner
         {
             /** @var array<string, mixed> */
             private array $env;

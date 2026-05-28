@@ -23,7 +23,7 @@ class ClaudeCodeRunnerTest extends TestCase
      */
     private function makeProcessStub(string $stdout = '', string $stderr = '', int $exitCode = 0): object
     {
-        return new class ($stdout, $stderr, $exitCode)
+        return new class($stdout, $stderr, $exitCode)
         {
             public function __construct(
                 private string $stdout,

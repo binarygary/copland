@@ -23,7 +23,7 @@ class LlmClientFactoryTest extends TestCase
      */
     private function makeGlobal(array $llm = [], string $apiKey = 'test-key', int $maxAttempts = 3, int $baseDelay = 1): GlobalConfig
     {
-        return new class ($llm, $apiKey, $maxAttempts, $baseDelay) extends GlobalConfig
+        return new class($llm, $apiKey, $maxAttempts, $baseDelay) extends GlobalConfig
         {
             public function __construct(
                 private array $llmData,
@@ -60,11 +60,11 @@ class LlmClientFactoryTest extends TestCase
      * Create a RepoConfig stub with the given llm config data.
      *
      * @param  array<int, string>  $allowedCommands  Used by the executor-stage
-     *   claude-code path to derive `Bash(<first-word> *)` entries.
+     *                                               claude-code path to derive `Bash(<first-word> *)` entries.
      */
     private function makeRepo(array $llm = [], array $allowedCommands = []): RepoConfig
     {
-        return new class ($llm, $allowedCommands) extends RepoConfig
+        return new class($llm, $allowedCommands) extends RepoConfig
         {
             public function __construct(private array $llmData, private array $allowed)
             {

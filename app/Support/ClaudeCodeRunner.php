@@ -21,9 +21,9 @@ class ClaudeCodeRunner
 {
     /**
      * @param  Closure(array<int, string>, string, int): object|null  $processFactory
-     *   Optional factory that takes ($argv, $cwd, $timeoutSeconds) and returns
-     *   a Process-like object exposing run() / isSuccessful() / getOutput() /
-     *   getErrorOutput() / getExitCode(). Default builds a real Symfony Process.
+     *                                                                                 Optional factory that takes ($argv, $cwd, $timeoutSeconds) and returns
+     *                                                                                 a Process-like object exposing run() / isSuccessful() / getOutput() /
+     *                                                                                 getErrorOutput() / getExitCode(). Default builds a real Symfony Process.
      */
     public function __construct(
         private string $binaryPath = 'claude',
