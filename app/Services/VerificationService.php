@@ -27,6 +27,12 @@ class VerificationService
         $changedFiles = $this->git->changedFiles($workspacePath);
         $fileCount = count($changedFiles);
 
+        if ($fileCount === 0) {
+            $failures[] = 'Executor produced no file changes; nothing to commit';
+
+            return new VerificationResult(false, $failures);
+        }
+
         if ($fileCount > $plan->maxFilesChanged) {
             $failures[] = "Changed {$fileCount} files, but max is {$plan->maxFilesChanged}";
         }

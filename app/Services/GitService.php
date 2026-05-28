@@ -35,29 +35,17 @@ class GitService
 
     public function changedFiles(string $workspacePath): array
     {
-        $process = new Process(['git', 'diff', '--name-only', 'HEAD'], $workspacePath);
-        $process->run();
+        $output = $this->output(['git', 'diff', '--name-only', 'HEAD'], $workspacePath, 'git diff failed');
 
-        if (! $process->isSuccessful()) {
-            throw new RuntimeException('git diff failed: '.$process->getErrorOutput());
-        }
-
-        $output = trim($process->getOutput());
+        $output = trim($output);
 
         return $output !== '' ? explode("\n", $output) : [];
     }
 
     public function changedLineCount(string $workspacePath): int
     {
-        $process = new Process(['git', 'diff', '--stat', 'HEAD'], $workspacePath);
-        $process->run();
+        $output = $this->output(['git', 'diff', '--stat', 'HEAD'], $workspacePath, 'git diff --stat failed');
 
-        if (! $process->isSuccessful()) {
-            throw new RuntimeException('git diff --stat failed: '.$process->getErrorOutput());
-        }
-
-        $output = $process->getOutput();
-        preg_match('/(\d+) insertion|(\d+) deletion/', $output, $insertions);
         preg_match_all('/(\d+) insertion|(\d+) deletion/', $output, $matches);
 
         $total = 0;
