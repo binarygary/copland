@@ -17,6 +17,7 @@ use App\Services\GitService;
 use App\Services\IssuePrefilterService;
 use App\Services\PlanValidatorService;
 use App\Services\RunOrchestratorService;
+use App\Services\TaskDirectoryWriterService;
 use App\Services\VerificationService;
 use App\Services\WorkspaceService;
 use App\Support\AnthropicCostEstimator;
@@ -296,6 +297,7 @@ class RunCommand extends Command implements SignalableCommandInterface
                 git: $git,
                 executor: new ClaudeExecutorService($globalConfig, $executorClient),
                 verifier: new VerificationService($git),
+                taskWriter: new TaskDirectoryWriterService,
             );
 
             $result = $orchestrator->run($repo, $repoProfile, fn (string $entry) => $this->line($entry), $snapshot);

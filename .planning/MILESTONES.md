@@ -1,5 +1,23 @@
 # Milestones
 
+## v1.2 Onboarding (Shipped: 2026-05-26 — partial)
+
+**Phases completed:** 1 of 2 (Phase 18 only; Phase 19 dropped)
+**Timeline:** 2026-04-09 to 2026-05-26
+**Archives:** [ROADMAP](milestones/v1.2-ROADMAP.md), [REQUIREMENTS](milestones/v1.2-REQUIREMENTS.md), [AUDIT](milestones/v1.2-MILESTONE-AUDIT.md)
+
+**Key accomplishments:**
+
+- `copland automate` is the primary scheduler-install command, with a working per-user macOS LaunchAgent and explicit `HOME` for cron correctness
+- `copland setup` remains as a hidden deprecated alias that prints a rename notice and delegates to `copland automate`, preserving existing user muscle memory
+- Test coverage covers both the new command and the wrapper's deprecation behavior
+
+**Closed with caveats:**
+
+- Phase 19 (Init Wizard, INIT-01..07) was dropped on milestone close — the v2.0 Godot Console direction changes what onboarding looks like, so a CLI-only init wizard would be throwaway. Requirements are deferred to a future onboarding milestone (see `v1.2-REQUIREMENTS.md`).
+
+---
+
 ## v1.1 Multi-Provider & Asana Integration (Shipped: 2026-04-09)
 
 **Phases completed:** 4 phases, 12 plans, 13 tasks

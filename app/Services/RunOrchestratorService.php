@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Contracts\TaskSource;
+use App\Data\ModelUsage;
 use App\Data\RunResult;
 use App\Support\AnthropicCostEstimator;
 use App\Support\PlanArtifactStore;
@@ -28,6 +29,7 @@ class RunOrchestratorService
         private VerificationService $verifier,
         private ?PlanArtifactStore $planArtifactStore = null,
         private ?RunLogStore $runLogStore = null,
+        private ?TaskDirectoryWriterService $taskWriter = null,
     ) {}
 
     public function run(string $repo, array $repoProfile, ?callable $progressCallback = null, ?RunProgressSnapshot $snapshot = null): RunResult
@@ -39,6 +41,9 @@ class RunOrchestratorService
         $selectedIssue = null;
         $runLogStore = $this->runLogStore ?? new RunLogStore;
         $caught = null;
+        $repoPath = null;
+        $writerRepoSlug = null;
+        $runId = null;
 
         if ($snapshot !== null) {
             $snapshot->repo = $repo;
@@ -107,8 +112,27 @@ class RunOrchestratorService
 
             $this->pushLog("      Selected issue #{$selectedIssue['number']}: {$selectedIssue['title']}");
 
+            // Per D-06: Asana sources use basename(repo_path) so the on-disk directory and
+            // the frontmatter repo_slug agree (no GH-style slash, no __ collapse needed).
+            $writerRepoSlug = $this->taskSource instanceof AsanaTaskSource
+                ? basename($repoProfile['repo_path'])
+                : $repo;
+
+            // Per D-01/D-02: orchestrator-owned per-run id. ISO-8601 UTC with colons
+            // replaced by dashes for POSIX-safe directory naming. Lexicographic sort
+            // remains chronological. Generated exactly once per run() call.
+            $runId = str_replace(':', '-', gmdate('Y-m-d\TH:i:s\Z'));
+
+            $this->taskWriter?->writeNewTask($writerRepoSlug, $selectedIssue['number'], $selectedIssue['title'] ?? '', $selectedIssue['body'] ?? '', $repoProfile['repo_path'], $selectedIssue['html_url'] ?? '');
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'new');
+            $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'new');
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'selected');
+            $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'selected');
+
             // Step 3: Claude plan
             $this->pushLog('[3/8] Running Claude planner');
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'planning');
+            $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'planning');
             $plan = $this->planner->planTask($repoProfile, $selectedIssue);
             if ($snapshot !== null) {
                 $snapshot->plannerUsage = $plan->usage;
@@ -161,6 +185,8 @@ class RunOrchestratorService
             }
 
             $this->pushLog('      Plan validated OK');
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'planned');
+            $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'planned');
 
             // Step 5: Create worktree
             $repoPath = $repoProfile['repo_path'] ?? getcwd();
@@ -172,6 +198,8 @@ class RunOrchestratorService
 
             // Step 6: Run executor
             $this->pushLog('[6/8] Running Claude executor');
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'executing');
+            $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'executing');
             $executionResult = $this->executor->executeWithRepoProfile(
                 $workspacePath,
                 $plan,
@@ -211,6 +239,8 @@ class RunOrchestratorService
 
             // Step 7: Verify
             $this->pushLog('[7/8] Running verification');
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'verifying');
+            $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'verifying');
             $verificationResult = $this->verifier->verify($repoProfile, $workspacePath, $plan, $executionResult);
 
             if (! $verificationResult->passed) {
@@ -261,6 +291,8 @@ class RunOrchestratorService
             $prUrl = $pr['html_url'];
             $prNumber = $pr['number'];
             $this->pushLog("      Draft PR opened: {$prUrl}");
+            $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'pr_open');
+            $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'pr_open');
 
             foreach ($repoProfile['required_labels'] ?? ['agent-ready'] as $label) {
                 $this->taskSource->removeTag($repo, $selectedIssue['number'], $label);
@@ -298,7 +330,7 @@ class RunOrchestratorService
 
             throw $e;
         } finally {
-            if (isset($workspacePath) && $workspacePath !== null) {
+            if (isset($workspacePath)) {
                 try {
                     $this->workspace->cleanup($repoPath, $workspacePath);
                     $this->pushLog('      Run finished in current checkout');
@@ -307,6 +339,25 @@ class RunOrchestratorService
                 }
             }
 
+            if ($this->taskWriter !== null && $selectedIssue !== null && $writerRepoSlug !== null) {
+                try {
+                    $this->taskWriter->writeBlockedIfNotTerminal($writerRepoSlug, $selectedIssue['number']);
+                } catch (Throwable $e) {
+                    $this->pushLog("      Warning: blocked-state write failed: {$e->getMessage()}");
+                }
+            }
+
+            // D-08: per-run sibling — same guard order plus $runId !== null. Own try/catch
+            // so a per-run blocked-write failure never masks the original exception.
+            if ($this->taskWriter !== null && $selectedIssue !== null && $runId !== null && $writerRepoSlug !== null) {
+                try {
+                    $this->taskWriter->writeRunBlockedIfNotTerminal($writerRepoSlug, $selectedIssue['number'], $runId);
+                } catch (Throwable $e) {
+                    $this->pushLog("      Warning: per-run blocked-state write failed: {$e->getMessage()}");
+                }
+            }
+
+            $payload = null;
             try {
                 $payload = $result instanceof RunResult
                     ? $this->payloadFromResult($repo, $result)
@@ -316,6 +367,18 @@ class RunOrchestratorService
                 $this->pushLog("      Appended run log to {$path}");
             } catch (Throwable $e) {
                 $this->pushLog("      Warning: run log write failed: {$e->getMessage()}");
+            }
+
+            // D-09/D-10/D-11: outcome.md write — same finally arm, sibling try/catch
+            // so writer failure never masks JSONL failure and vice-versa. D-15: the
+            // $runLogStore->append() call above is untouched.
+            if ($this->taskWriter !== null && $selectedIssue !== null && $runId !== null && $writerRepoSlug !== null && $payload !== null) {
+                try {
+                    $outcome = $this->outcomePayload($runId, $result, $payload, $startedAt, $caught);
+                    $this->taskWriter->writeRunOutcome($writerRepoSlug, $selectedIssue['number'], $runId, $outcome);
+                } catch (Throwable $e) {
+                    $this->pushLog("      Warning: outcome write failed: {$e->getMessage()}");
+                }
             }
         }
     }
@@ -381,6 +444,38 @@ class RunOrchestratorService
                 ),
             ],
             'executor_duration_seconds' => $snapshot?->executorDurationSeconds,
+        ];
+    }
+
+    private function outcomePayload(string $runId, ?RunResult $result, array $payload, string $startedAt, ?Throwable $caught): array
+    {
+        // RESEARCH §Outcome.md Mapping Table: succeeded -> pr_open, failed/skipped -> blocked, crashed -> crashed
+        $rawStatus = (string) ($payload['status'] ?? 'crashed');
+        $status = match ($rawStatus) {
+            'succeeded' => 'pr_open',
+            'crashed' => 'crashed',
+            default => 'blocked', // 'failed' | 'skipped' -> blocked
+        };
+
+        // Normalize DATE_ATOM -> Z-form to match the writer's gmdate('Y-m-d\TH:i:s\Z') convention.
+        $startedAtZ = gmdate('Y-m-d\TH:i:s\Z', strtotime((string) ($payload['started_at'] ?? $startedAt)));
+        $finishedAtZ = gmdate('Y-m-d\TH:i:s\Z', strtotime((string) ($payload['finished_at'] ?? date(DATE_ATOM))));
+
+        $totalUsage = $payload['usage']['total'] ?? null;
+        $totalCost = $totalUsage instanceof ModelUsage ? $totalUsage->estimatedCostUsd : 0.0;
+
+        // renderFrontmatter coerces all values via (string) — but bool true casts to '1', not 'true',
+        // so emit 'true' / 'false' literals here for readability in the YAML head.
+        return [
+            'run_id' => $runId,
+            'status' => $status,
+            'pr_number' => $payload['pr']['number'] ?? '',
+            'pr_url' => (string) ($payload['pr']['url'] ?? ''),
+            'cost_usd' => (string) $totalCost,
+            'started_at' => $startedAtZ,
+            'finished_at' => $finishedAtZ,
+            'failure_reason' => (string) ($payload['failure_reason'] ?? ''),
+            'partial' => ! empty($payload['partial']) ? 'true' : 'false',
         ];
     }
 
