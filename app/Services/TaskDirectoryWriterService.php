@@ -166,7 +166,9 @@ class TaskDirectoryWriterService
             return;
         }
 
-        if (! mkdir($directory, 0755, true) && ! is_dir($directory)) {
+        // Use 0700 so the task store (which contains issue bodies, repo paths,
+        // and other potentially sensitive context) is owner-only by default.
+        if (! mkdir($directory, 0700, true) && ! is_dir($directory)) {
             throw new RuntimeException("Failed to create task directory at {$directory}");
         }
     }
