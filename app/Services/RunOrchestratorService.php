@@ -471,7 +471,7 @@ class RunOrchestratorService
             'status' => $status,
             'pr_number' => $payload['pr']['number'] ?? '',
             'pr_url' => (string) ($payload['pr']['url'] ?? ''),
-            'cost_usd' => (string) $totalCost,
+            'cost_usd' => sprintf('%.6f', $totalCost),
             'started_at' => $startedAtZ,
             'finished_at' => $finishedAtZ,
             'failure_reason' => (string) ($payload['failure_reason'] ?? ''),
