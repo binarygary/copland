@@ -80,6 +80,40 @@ it('refuses to prepare an execution branch from a dirty checkout', function () {
     ]);
 });
 
+it('surfaces stdout when commit fails with stderr empty', function () {
+    $git = new GitService(function (array $command, string $cwd): array {
+        return match ($command) {
+            ['git', 'add', '-A'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
+            ['git', 'commit', '-m', 'no changes here'] => [
+                'stdout' => "nothing to commit, working tree clean\n",
+                'stderr' => '',
+                'exitCode' => 1,
+            ],
+            default => throw new RuntimeException('Unexpected command: '.implode(' ', $command)),
+        };
+    });
+
+    expect(fn () => $git->commit('/tmp/repo', 'no changes here'))
+        ->toThrow(RuntimeException::class, 'nothing to commit');
+});
+
+it('still surfaces stderr when present', function () {
+    $git = new GitService(function (array $command, string $cwd): array {
+        return match ($command) {
+            ['git', 'add', '-A'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
+            ['git', 'commit', '-m', 'broken repo'] => [
+                'stdout' => '',
+                'stderr' => "fatal: not a git repository\n",
+                'exitCode' => 128,
+            ],
+            default => throw new RuntimeException('Unexpected command: '.implode(' ', $command)),
+        };
+    });
+
+    expect(fn () => $git->commit('/tmp/repo', 'broken repo'))
+        ->toThrow(RuntimeException::class, 'fatal: not a git repository');
+});
+
 it('ignores a repo-local .copland.yml file when checking for dirtiness', function () {
     $calls = [];
 

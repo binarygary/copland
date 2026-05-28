@@ -101,7 +101,10 @@ class GitService
         $result = $this->execute($command, $cwd);
 
         if ($result['exitCode'] !== 0) {
-            throw new RuntimeException("{$errorMessage}: ".$result['stderr']);
+            $stderr = trim($result['stderr']);
+            $detail = $stderr !== '' ? $result['stderr'] : trim($result['stdout']);
+
+            throw new RuntimeException("{$errorMessage}: ".$detail);
         }
     }
 
