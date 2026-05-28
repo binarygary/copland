@@ -28,7 +28,7 @@ class HomeDirectory
 
         if (function_exists('posix_geteuid') && function_exists('posix_getpwuid')) {
             $pwinfo = posix_getpwuid(posix_geteuid());
-            if (is_array($pwinfo) && $pwinfo['dir'] !== '') {
+            if (is_array($pwinfo) && isset($pwinfo['dir']) && $pwinfo['dir'] !== '') {
                 return rtrim($pwinfo['dir'], '/');
             }
         }
