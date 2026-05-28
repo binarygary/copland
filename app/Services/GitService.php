@@ -35,11 +35,24 @@ class GitService
 
     public function changedFiles(string $workspacePath): array
     {
-        $output = $this->output(['git', 'diff', '--name-only', 'HEAD'], $workspacePath, 'git diff failed');
+        $output = $this->output(['git', 'status', '--porcelain'], $workspacePath, 'git status failed');
 
-        $output = trim($output);
+        $files = [];
+        foreach (explode("\n", $output) as $line) {
+            if (trim($line) === '') {
+                continue;
+            }
+            if (preg_match('/^\?\?\s+\.copland\.yml$/', $line)) {
+                continue;
+            }
+            $path = substr($line, 3);
+            if (str_contains($path, ' -> ')) {
+                [, $path] = explode(' -> ', $path, 2);
+            }
+            $files[] = $path;
+        }
 
-        return $output !== '' ? explode("\n", $output) : [];
+        return $files;
     }
 
     public function changedLineCount(string $workspacePath): int
@@ -102,7 +115,7 @@ class GitService
 
         if ($result['exitCode'] !== 0) {
             $stderr = trim($result['stderr']);
-            $detail = $stderr !== '' ? $result['stderr'] : trim($result['stdout']);
+            $detail = $stderr !== '' ? $stderr : trim($result['stdout']);
 
             throw new RuntimeException("{$errorMessage}: ".$detail);
         }
