@@ -350,6 +350,19 @@ class RunCommand extends Command implements SignalableCommandInterface
                 }
             }
 
+            // Codex CLI binary presence check — same pattern as claude-code.
+            foreach (LlmClientFactory::codexStageConfigs($globalConfig, $repoConfig) as $entry) {
+                $binary = $entry['binary_path'] ?? 'codex';
+                if (in_array($binary, $checkedBinaries, true)) {
+                    continue;
+                }
+                $checkedBinaries[] = $binary;
+
+                if ($finder->find($binary) === null) {
+                    $this->warn("Warning: Codex binary '{$binary}' not found on PATH. The codex provider will fail at runtime. Install the Codex CLI or set `binary_path` in your llm config.");
+                }
+            }
+
             $git = new GitService;
 
             // Task source selection (D-03, D-09) — read task_source from repo-level .copland.yml

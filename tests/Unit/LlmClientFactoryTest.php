@@ -6,6 +6,7 @@ use App\Config\GlobalConfig;
 use App\Config\RepoConfig;
 use App\Support\AnthropicApiClient;
 use App\Support\ClaudeCodeClient;
+use App\Support\CodexClient;
 use App\Support\LlmClientFactory;
 use App\Support\OpenAiCompatClient;
 use Tests\TestCase;
@@ -203,6 +204,30 @@ class LlmClientFactoryTest extends TestCase
         $client = LlmClientFactory::forStage('selector', $global);
 
         $this->assertInstanceOf(ClaudeCodeClient::class, $client);
+    }
+
+    // ─── Codex provider: global default → CodexClient ────────────────────────
+
+    public function test_for_stage_returns_codex_client_for_global_codex_default(): void
+    {
+        $global = $this->makeGlobal([
+            'default' => ['provider' => 'codex'],
+        ]);
+
+        $this->assertInstanceOf(CodexClient::class, LlmClientFactory::forStage('executor', $global));
+        $this->assertInstanceOf(CodexClient::class, LlmClientFactory::forStage('selector', $global));
+    }
+
+    public function test_codex_stage_configs_dedupes_binary_across_stages(): void
+    {
+        $global = $this->makeGlobal([
+            'default' => ['provider' => 'codex', 'binary_path' => '/usr/local/bin/codex'],
+        ]);
+
+        $configs = LlmClientFactory::codexStageConfigs($global);
+
+        $this->assertCount(1, $configs);
+        $this->assertSame('/usr/local/bin/codex', $configs[0]['binary_path']);
     }
 
     // ─── Test 7: per-stage allowed-tools defaults (with executor repo merge) ──

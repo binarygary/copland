@@ -30,6 +30,7 @@ final class LlmClientFactory
             'ollama' => self::buildOllama($config),
             'openrouter' => self::buildOpenRouter($config),
             'claude-code' => self::buildClaudeCode($config, $stage, $repo),
+            'codex' => self::buildCodex($config, $stage),
             default => self::buildAnthropic($global),
         };
     }
@@ -60,6 +61,38 @@ final class LlmClientFactory
 
             $seen[$binaryPath] = true;
             $result[] = ['binary_path' => $binaryPath, 'model' => $model];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Return deduplicated list of binary paths for all codex-configured stages.
+     * Used by RunCommand for the startup binary-presence warning.
+     *
+     * @return array<int, array{binary_path: string}>
+     */
+    public static function codexStageConfigs(GlobalConfig $global, ?RepoConfig $repo = null): array
+    {
+        $stages = ['selector', 'planner', 'executor'];
+        $seen = [];
+        $result = [];
+
+        foreach ($stages as $stage) {
+            $config = self::resolveConfig($stage, $global, $repo);
+
+            if (($config['provider'] ?? '') !== 'codex') {
+                continue;
+            }
+
+            $binaryPath = $config['binary_path'] ?? 'codex';
+
+            if (isset($seen[$binaryPath])) {
+                continue;
+            }
+
+            $seen[$binaryPath] = true;
+            $result[] = ['binary_path' => $binaryPath];
         }
 
         return $result;
@@ -255,5 +288,57 @@ final class LlmClientFactory
             workspaceCwd: $cwd,
             maxBudgetUsd: $maxBudgetUsd,
         );
+    }
+
+    /**
+     * Build a CodexClient for a stage configured with provider=codex.
+     *
+     * Tool access is governed by Codex's sandbox mode (not a per-tool allowlist):
+     * read/plan stages get `read-only`, the executor gets `workspace-write`.
+     * Override per stage with the `sandbox` config key. The Codex model is taken
+     * from the `model` config key (a Codex/OpenAI model name) or left to Codex's
+     * own default — the stage's Claude model name is never forwarded.
+     *
+     * The output schema mirrors claude-code: an inline `{summary: string}` for
+     * the executor, and resources/schemas/{stage}.json for selector/planner.
+     */
+    private static function buildCodex(array $config, string $stage): CodexClient
+    {
+        $binaryPath = $config['binary_path'] ?? 'codex';
+        $model = isset($config['model']) ? (string) $config['model'] : null;
+        $sandbox = isset($config['sandbox']) && is_string($config['sandbox'])
+            ? $config['sandbox']
+            : self::codexDefaultSandbox($stage);
+
+        if ($stage === 'executor') {
+            $schema = '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"],"additionalProperties":false}';
+        } else {
+            $schemaPath = base_path("resources/schemas/{$stage}.json");
+            $schema = @file_get_contents($schemaPath);
+            if ($schema === false) {
+                throw new \RuntimeException(
+                    "codex: schema file not found or unreadable for stage '{$stage}' at {$schemaPath}"
+                );
+            }
+        }
+
+        // RunCommand::runRepo() has chdir($path) before the factory call.
+        $cwd = getcwd() ?: '.';
+
+        return new CodexClient(
+            runner: new CodexRunner($binaryPath),
+            jsonSchema: $schema,
+            sandbox: $sandbox,
+            workspaceCwd: $cwd,
+            modelOverride: $model,
+        );
+    }
+
+    private static function codexDefaultSandbox(string $stage): string
+    {
+        return match ($stage) {
+            'executor' => 'workspace-write', // needs to edit files in the checkout
+            default => 'read-only',          // selector/planner only read the repo
+        };
     }
 }
