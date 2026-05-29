@@ -8,6 +8,7 @@ use App\Data\PlanResult;
 use App\Data\RunResult;
 use App\Support\AnthropicCostEstimator;
 use App\Support\PlanArtifactStore;
+use App\Support\RepoRunLock;
 use App\Support\RunLogStore;
 use App\Support\RunProgressSnapshot;
 use Throwable;
@@ -31,6 +32,7 @@ class RunOrchestratorService
         private ?PlanArtifactStore $planArtifactStore = null,
         private ?RunLogStore $runLogStore = null,
         private ?TaskDirectoryWriterService $taskWriter = null,
+        private ?RepoRunLock $repoLock = null,
     ) {}
 
     /**
@@ -55,6 +57,27 @@ class RunOrchestratorService
 
         if ($snapshot !== null) {
             $snapshot->repo = $repo;
+        }
+
+        // Serialize runs per repo: we work in the live checkout, so a second
+        // concurrent run would fight over the working tree and branch. A busy
+        // repo is skipped immediately rather than queued. flock auto-releases if
+        // this process dies, so a crash can't wedge the repo.
+        $repoLock = $this->repoLock ?? new RepoRunLock;
+        if (! $repoLock->acquire($repo)) {
+            $this->pushLog("      Skipped — a run is already in progress for {$repo}");
+
+            return new RunResult(
+                status: 'skipped',
+                prUrl: null,
+                prNumber: null,
+                selectedIssueTitle: null,
+                selectedTaskId: $targetIssueNumber,
+                failureReason: "A run is already in progress for {$repo}",
+                log: $this->log,
+                startedAt: $startedAt,
+                finishedAt: date(DATE_ATOM),
+            );
         }
 
         try {
@@ -425,6 +448,10 @@ class RunOrchestratorService
                     $this->pushLog("      Warning: outcome write failed: {$e->getMessage()}");
                 }
             }
+
+            // Release the per-repo lock last, after all bookkeeping, so the repo
+            // stays reserved until this run is fully wrapped up.
+            $repoLock->release();
         }
     }
 

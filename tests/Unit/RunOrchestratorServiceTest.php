@@ -17,6 +17,7 @@ use App\Services\RunOrchestratorService;
 use App\Services\VerificationService;
 use App\Services\WorkspaceService;
 use App\Support\PlanArtifactStore;
+use App\Support\RepoRunLock;
 use App\Support\RunLogStore;
 use App\Support\RunProgressSnapshot;
 
@@ -452,6 +453,75 @@ it('fails when the requested issue is not an accepted candidate', function () {
     expect($stores['plan']->saved)->toBe([]);
 });
 
+it('skips immediately when another run already holds the repo lock', function () {
+    $taskSource = Mockery::mock(TaskSource::class);
+    $taskSource->shouldNotReceive('fetchTasks'); // never even fetches when busy
+
+    $busyLock = new class extends RepoRunLock
+    {
+        public function acquire(string $repoSlug): bool
+        {
+            return false;
+        }
+
+        public function release(): void {}
+    };
+
+    $service = makeOrchestrator(taskSource: $taskSource, repoLock: $busyLock);
+    $result = $service->run('acme/repo', []);
+
+    expect($result->status)->toBe('skipped');
+    expect($result->failureReason)->toContain('already in progress');
+});
+
+it('releases the repo lock when the run finishes', function () {
+    $stores = makeStores();
+    $issue = makeIssue();
+
+    $taskSource = Mockery::mock(TaskSource::class);
+    $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
+    $taskSource->shouldReceive('addComment')->andReturnNull();
+
+    $prefilter = Mockery::mock(IssuePrefilterService::class);
+    $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
+
+    $selector = Mockery::mock(ClaudeSelectorService::class);
+    $selector->shouldReceive('selectTask')->once()->andReturn(new SelectionResult('accept', 42, 'ok', [], usage('selector')));
+
+    // Planner declines → run ends early but still passes through the finally.
+    $planner = Mockery::mock(ClaudePlannerService::class);
+    $planner->shouldReceive('planTask')->once()->andReturn(makeOrchestratorPlan(decision: 'decline', declineReason: 'too risky', usage: usage('planner')));
+
+    $lock = new class extends RepoRunLock
+    {
+        public bool $released = false;
+
+        public function acquire(string $repoSlug): bool
+        {
+            return true;
+        }
+
+        public function release(): void
+        {
+            $this->released = true;
+        }
+    };
+
+    $service = makeOrchestrator(
+        taskSource: $taskSource,
+        prefilter: $prefilter,
+        selector: $selector,
+        planner: $planner,
+        planArtifactStore: $stores['plan'],
+        runLogStore: $stores['log'],
+        repoLock: $lock,
+    );
+
+    $service->run('acme/repo', []);
+
+    expect($lock->released)->toBeTrue();
+});
+
 function makeOrchestrator(
     ?TaskSource $taskSource = null,
     ?IssuePrefilterService $prefilter = null,
@@ -464,6 +534,7 @@ function makeOrchestrator(
     ?VerificationService $verifier = null,
     ?PlanArtifactStore $planArtifactStore = null,
     ?RunLogStore $runLogStore = null,
+    ?RepoRunLock $repoLock = null,
 ): RunOrchestratorService {
     return new RunOrchestratorService(
         $taskSource ?? Mockery::mock(TaskSource::class),
@@ -477,6 +548,17 @@ function makeOrchestrator(
         $verifier ?? Mockery::mock(VerificationService::class),
         $planArtifactStore,
         $runLogStore,
+        // Default to a no-op lock so tests never take a real flock on disk.
+        // Lock behaviour is covered by its own dedicated tests below.
+        repoLock: $repoLock ?? new class extends RepoRunLock
+        {
+            public function acquire(string $repoSlug): bool
+            {
+                return true;
+            }
+
+            public function release(): void {}
+        },
     );
 }
 
