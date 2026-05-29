@@ -1,68 +1,74 @@
-# Requirements — v2.0 Godot Console
+# Requirements — v2.1 Godot Console — Configuration + Operational Surfaces
 
-**Milestone:** v2.0 Godot Console
-**Goal:** Recover the lost Godot prototype onto `main`, and grow a task-directory persistence layer in the PHP CLI so the read-only console shows live overnight-agent state.
-
----
-
-## v2.0 Requirements
-
-### Prototype Recovery
-
-- [x] **GODOT-01**: Godot prototype files (`console-godot/{project.godot, scenes/Main.tscn, scripts/Main.gd, scripts/TaskLoader.gd, icon.svg, README.md, TODO.md}`) are restored onto `main` from `backup/local-main-diverged-20260526` with the existing `console-godot/assets/{fonts,textures,themes}/` directories preserved
-- [x] **GODOT-02**: `console-godot/README.md` run instructions work end-to-end on the current Godot 4.2+ install — opening `project.godot` in Godot and pressing F5 launches the Copland Console without errors
-- [x] **GODOT-03**: User can run `copland console` (new PHP CLI subcommand) which launches the Godot project pointed at the live `~/.copland/tasks/` directory
-
-### Backend Persistence
-
-- [ ] **TASK-01**: When a run is selected, the orchestrator writes `~/.copland/tasks/<repo>/<id>/task.md` containing the task title, body, repo slug, repo path, source URL, and `created_at` timestamp
-- [ ] **TASK-02**: The orchestrator writes/updates `~/.copland/tasks/<repo>/<id>/status.md` on every lifecycle transition (new → planning → executing → reviewing → complete | blocked) with a timestamp per transition
-- [x] **TASK-03**: Each run writes a per-run subdirectory `~/.copland/tasks/<repo>/<id>/runs/<run-id>/` capturing at minimum the PR URL (or a structured failure reason) and the final cost summary
-- [x] **TASK-04**: Existing `~/.copland/logs/runs.jsonl` JSONL log keeps working unchanged — additive only, no behavioral regression for existing log consumers
-- [x] **TASK-05**: Task-directory writer is exercised by Pest tests using a temporary `HOME` so no developer-machine state is touched
-
-### Console Integration & Docs
-
-- [x] **CONS-01**: A real overnight-agent run produces a task directory that `TaskLoader.gd` renders without errors and without schema drift — task titles, statuses, and run metadata all show up in the console panes
-- [x] **CONS-02**: Root `README.md` documents the console: how to install Godot 4.2+, how to launch via `copland console`, and what each of the three panes (workflow states / task manifest / dossier) shows
-- [x] **CONS-03**: `console-godot/README.md` is updated to match what shipped (file paths, what counts as "real" data, any divergence from the original prototype design)
+**Milestone:** v2.1 Godot Console — Configuration + Operational Surfaces
+**Goal:** Turn the Godot console from a read-only viewer into a working operational surface — users configure Copland from the console, see live executor activity, and drill into specific runs without touching YAML.
 
 ---
 
-## Future Requirements (Deferred from `console-godot/TODO.md`)
+## v2.1 Requirements
 
-These are explicitly out of scope for v2.0; they appear as deferred items in the recovered `console-godot/TODO.md` and should drive a future v2.1 milestone:
+### Config UI
 
-- Run drill-in selection — ↑/↓ to pick runs in the dossier, ENTER to open a deeper view
-- Live-tail of an executing run — structured progress events (NDJSON or unix socket) streamed to the console
-- UI scale on Retina / pixel-perfect rendering — only relevant if `stretch/mode` changes from `canvas_items`
+- [ ] **CFG-01**: `copland config show --json` emits a structured JSON snapshot of the merged global + per-repo configuration (repos[], asana_token redaction state, per-repo asana fields, per-repo `.copland.yml` overrides, defaults, stage models) that the Godot console can consume without parsing YAML.
+- [ ] **CFG-02**: User can list, add, edit, and remove entries in `~/.copland.yml` `repos[]` (slug + path) from the Godot console.
+- [ ] **CFG-03**: User can set the global `asana_token` and per-repo `asana_project` / `asana_filters` from the console.
+- [ ] **CFG-04**: User can edit per-repo `.copland.yml` fields (`task_source`, `repo_summary`, `conventions`, llm stage overrides) from the console for any configured repo.
+- [ ] **CFG-05**: User can edit global defaults (`max_files_changed`, `max_lines_changed`, `base_branch`) and stage models (selector / planner / executor) from the console.
+- [ ] **CFG-06**: All write paths from the console invoke `copland config <subcommand>` flags; PHP owns YAML parsing, validation, and comment preservation; Godot never writes YAML directly.
 
-Also deferred:
+### Run Drill-in
 
-- INIT-01..07 from v1.2 — onboarding wizard, to be redesigned once the console shape is settled
+- [ ] **DRILL-01**: In the task drill-in view, ↑/↓ selects among run rows when runs exist for the task; selection state is visible.
+- [ ] **DRILL-02**: ENTER on a selected run opens a per-run view; ESC (or equivalent) returns to the task drill-in.
+- [ ] **DRILL-03**: The per-run view renders run id, status, prompts, and tool calls sourced from `~/.copland/tasks/<repo>/<id>/runs/<run-id>/` artifacts.
+
+### Live-Tail
+
+- [ ] **LIVE-01**: The PHP CLI emits structured per-tool-call events as NDJSON to `~/.copland/tasks/<repo>/<task>/runs/<run-id>/events.log` during executor runs (one event per line; each event carries `ts`, `kind`, `tool`, and tool-specific fields).
+- [ ] **LIVE-02**: When a task is in the `EXECUTING` state, the Godot console live-tails `events.log` and renders new tool calls as they appear (poll- or watch-based; latency target ≤ 2s).
+- [ ] **LIVE-03**: Tailing terminates gracefully when the run transitions to a terminal state (`complete` / `blocked`) — no zombie watchers, no error popups, dossier reflects the final state.
+
+---
+
+## Future Requirements
+
+Deferred to a later milestone (v2.2+):
+
+- Config form validation feedback inline in the Godot UI (e.g. "path does not exist" before write) — v2.1 surfaces errors only through the CLI exit code / stderr round-trip.
+- Bulk import / export of config across machines.
+- Config diff / dry-run preview before write.
+- Live-tail of selector and planner stages — v2.1 covers executor only because planner/selector are single-shot or short-lived.
+- Replay of past runs from `events.log` in the run drill-in view (LIVE-01 lays groundwork but DRILL-03 reads static artifacts).
+
+---
 
 ## Out of Scope
 
-- Editing or write actions from the Godot console — read-only is the ceiling for v2.0 and likely beyond
-- Replacing or removing the existing `~/.copland/logs/runs.jsonl` — it stays as the canonical local audit trail
-- Auto-launching the console after a run — the console is operator-driven, not auto-popping
-- Bundling the Godot runtime with Copland — user installs Godot separately
-- Windows console support — macOS/Linux only, matching the rest of Copland
+Explicit exclusions:
+
+- Editing repo-level `.copland.yml` in repos Copland does not have a configured `path` for — every config target must be a repo already in `~/.copland.yml`.
+- Web UI for config — Godot console remains the only graphical surface.
+- Multi-user / team config — personal-tool scope unchanged from v1.x.
+- Secret rotation / keychain integration for `asana_token` — token continues to live in `~/.copland.yml` (separate keychain work is a candidate for a later milestone).
+- Editing runs/events.log post-hoc — append-only audit trail.
 
 ---
 
 ## Traceability
 
-| REQ-ID | Phase | Status |
-|--------|-------|--------|
-| GODOT-01 | Phase 19 | Complete |
-| GODOT-02 | Phase 19 | Complete |
-| GODOT-03 | Phase 19 | Complete |
-| TASK-01 | Phase 20 | Pending |
-| TASK-02 | Phase 20 | Pending |
-| TASK-03 | Phase 21 | Complete |
-| TASK-04 | Phase 21 | Complete |
-| TASK-05 | Phase 21 | Complete |
-| CONS-01 | Phase 22 | Complete |
-| CONS-02 | Phase 22 | Complete |
-| CONS-03 | Phase 22 | Complete |
+| REQ-ID   | Phase | Status      |
+|----------|-------|-------------|
+| CFG-01   | TBD   | Not started |
+| CFG-02   | TBD   | Not started |
+| CFG-03   | TBD   | Not started |
+| CFG-04   | TBD   | Not started |
+| CFG-05   | TBD   | Not started |
+| CFG-06   | TBD   | Not started |
+| DRILL-01 | TBD   | Not started |
+| DRILL-02 | TBD   | Not started |
+| DRILL-03 | TBD   | Not started |
+| LIVE-01  | TBD   | Not started |
+| LIVE-02  | TBD   | Not started |
+| LIVE-03  | TBD   | Not started |
+
+*Phase column filled by roadmapper.*
