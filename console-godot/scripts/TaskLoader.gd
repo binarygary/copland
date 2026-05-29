@@ -369,4 +369,5 @@ static func _normalize_cli_task(t: Dictionary) -> Dictionary:
         "task_dir": String(t.get("task_dir", "")),
         "is_real": bool(t.get("is_real", true)),
         "url": String(t.get("url", "")),
+        "failure_reason": String(t.get("failure_reason", "")),
     }

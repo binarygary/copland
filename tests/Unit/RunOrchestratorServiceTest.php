@@ -37,7 +37,8 @@ it('completes the happy path and opens a draft PR', function () {
     $taskSource->shouldReceive('openDraftPr')->once()->with('acme/repo', 'feature/test-branch', 'Test PR', 'PR body')
         ->andReturn(['html_url' => 'https://example.test/pr/1', 'number' => 1]);
     $taskSource->shouldReceive('removeTag')->once()->with('acme/repo', 42, 'agent-ready');
-    $taskSource->shouldReceive('addComment')->once()->with('acme/repo', 42, Mockery::type('string'));
+    // Comments now fire at every transition; content is asserted in dedicated tests.
+    $taskSource->shouldReceive('addComment')->andReturnNull();
 
     $prefilter = Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
@@ -308,6 +309,12 @@ it('cleans up the workspace and writes a partial run log when the executor throw
 
     $taskSource = Mockery::mock(TaskSource::class);
     $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
+    // The crash path was previously silent on the ticket; assert the reason is
+    // posted. Transition-ping comments have no matching expectation and return
+    // null harmlessly (addComment is a defined mock method).
+    $taskSource->shouldReceive('addComment')
+        ->with('acme/repo', 42, Mockery::on(fn (string $b) => str_contains($b, 'kaboom')))
+        ->once();
 
     $prefilter = Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
@@ -360,7 +367,7 @@ it('runs a requested issue end-to-end without invoking the selector', function (
     $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
     $taskSource->shouldReceive('openDraftPr')->once()->andReturn(['html_url' => 'https://example.test/pr/7', 'number' => 7]);
     $taskSource->shouldReceive('removeTag')->once();
-    $taskSource->shouldReceive('addComment')->once();
+    $taskSource->shouldReceive('addComment')->andReturnNull();
 
     $prefilter = Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));

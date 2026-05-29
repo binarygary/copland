@@ -207,11 +207,43 @@ class TaskListService
         $row['updated'] = $this->formatTimestamp((string) ($statusFm['updated_at'] ?? $row['updated']));
         $row['runs_count'] = $this->countRuns($dir.'/runs');
         $row['task_dir'] = $dir;
+        // Surface the latest run's failure reason so the GUI can explain a
+        // blocked/failed task instead of just showing the state.
+        $row['failure_reason'] = $this->latestRunFailureReason($dir.'/runs');
         if (! empty($taskFm['title'])) {
             $row['title'] = (string) $taskFm['title'];
         }
 
         return $row;
+    }
+
+    /**
+     * Read the failure_reason from the most recent run's outcome.md, or '' when
+     * there is none. Run IDs are ISO-8601 timestamps, so a lexicographic sort is
+     * chronological and the last entry is the latest run.
+     */
+    private function latestRunFailureReason(string $runsDir): string
+    {
+        if (! is_dir($runsDir)) {
+            return '';
+        }
+
+        $runs = [];
+        foreach (scandir($runsDir) ?: [] as $entry) {
+            if ($entry !== '.' && $entry !== '..' && is_dir($runsDir.'/'.$entry)) {
+                $runs[] = $entry;
+            }
+        }
+
+        if ($runs === []) {
+            return '';
+        }
+
+        sort($runs);
+        $latest = (string) end($runs);
+        $outcome = $this->readFrontmatter($runsDir.'/'.$latest.'/outcome.md');
+
+        return (string) ($outcome['failure_reason'] ?? '');
     }
 
     private function taskStoreDir(string $slug, string $taskId): string

@@ -1357,6 +1357,27 @@ func _populate_drill_in() -> void:
         row.add_child(val)
         drill_meta_box.add_child(row)
 
+    # Surface the latest run's failure reason in danger color when present — this
+    # is the "why" behind a blocked/failed task that was previously invisible.
+    var failure := String(t.get("failure_reason", "")).strip_edges()
+    if failure != "":
+        var frow := HBoxContainer.new()
+        frow.add_theme_constant_override("separation", 18)
+        var fkey := Label.new()
+        fkey.text = "WHY"
+        fkey.add_theme_color_override("font_color", PALETTE.danger)
+        fkey.add_theme_font_size_override("font_size", 12)
+        fkey.custom_minimum_size = Vector2(110, 0)
+        frow.add_child(fkey)
+        var fval := Label.new()
+        fval.text = failure
+        fval.add_theme_color_override("font_color", PALETTE.danger)
+        fval.add_theme_font_size_override("font_size", 14)
+        fval.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        fval.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        frow.add_child(fval)
+        drill_meta_box.add_child(frow)
+
     # Notes — read notes.md sidecar if present
     var notes_path := String(t.get("task_dir", "")) + "/notes.md"
     if String(t.get("task_dir", "")) != "" and FileAccess.file_exists(notes_path):
