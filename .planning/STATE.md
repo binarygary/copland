@@ -65,6 +65,7 @@ None.
 
 ### Recent Quick Tasks
 
+- 260528-tpm: Planner's `changes[]` filter now normalizes `$change['file']` before looking it up in `$readPaths`, so equivalent path spellings (`src/x` vs `./src/x`) match. Bug surfaced in PR #16 round-2 review (Copilot). See `.planning/quick/260528-tpm-fix-planner-normalization-providercostus/SUMMARY.md`.
 - 260528-a6b: Planner now reads files and emits exact `changes: [{file, old, new, reason}]` diffs so small Ollama executor models can apply edits via `replace_in_file` without synthesizing text. See `.planning/quick/260528-a6b-extend-planner-to-produce-executor-ready/260528-a6b-SUMMARY.md`.
 
 ### Blockers/Concerns
