@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Godot Console
-status: complete
-stopped_at: Phase 22 Plan 02 complete — CONS-02 + CONS-03 satisfied; v2.0 milestone doc-complete
-last_updated: "2026-05-28T11:30:00Z"
-last_activity: 2026-05-28
+milestone: v2.1
+milestone_name: Godot Console — Configuration + Operational Surfaces
+status: planning
+last_updated: "2026-05-29T01:46:59.879Z"
+last_activity: 2026-05-29
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-26)
 
 ## Current Position
 
-Phase: 22 (complete)
-Plan: 22-02 (complete) — Phase 22 closed
-Status: v2.0 Godot Console milestone doc-complete. CONS-01 (smoke), CONS-02 (root README console section), and CONS-03 (console-godot README rewrite) all satisfied. Both READMEs document the D-09 canonical-purpose split (`~/.copland/tasks/` live state vs `~/.copland/logs/runs.jsonl` audit trail). `console-godot/TODO.md` retagged as v2.1. Ready for next milestone planning.
-Last activity: 2026-05-27
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-29 — Milestone v2.1 started
 
 ## Performance Metrics
 

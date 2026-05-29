@@ -98,22 +98,21 @@ A reliable overnight agent that opens merge-ready PRs without intervention.
 | Asana GIDs handled as strings throughout pipeline | `SelectionResult`, `RunResult`, `RunProgressSnapshot` all declare `string\|int\|null $selectedTaskId` | ✓ v1.1 Phase 17 |
 | configuredRepos() unchanged — Asana keys accessed separately via slug-based getters | Preserves existing repo normalization contract; zero risk to GitHub repos | ✓ v1.1 Phase 17 |
 
-## Current Milestone: v2.0 Godot Console
+## Current Milestone: v2.1 Godot Console — Configuration + Operational Surfaces
 
-**Goal:** Recover the lost Godot prototype onto `main`, and grow a task-directory persistence layer in the PHP CLI so the read-only console shows live overnight-agent state.
+**Goal:** Turn the Godot console from a read-only viewer into a working operational surface — users configure Copland from the console, see live executor activity, and drill into specific runs without touching YAML.
 
 **Target features:**
-- Restore the Godot 4.2+ prototype (`project.godot`, scenes, scripts, README, TODO) from `backup/local-main-diverged-20260526` into `console-godot/` on `main`
-- Add a task-directory writer to the orchestrator so each run materializes `~/.copland/tasks/<repo>/<id>/{task.md, status.md}` — the layout `TaskLoader.gd` already expects
-- Wire orchestrator state transitions (new → planning → executing → reviewing → complete/blocked) into `status.md` so the console reflects real run lifecycle
-- End-to-end smoke: a real overnight run produces task directories the console renders without errors
-- Document `copland console` (how to run the Godot console) and how task directories relate to the existing `~/.copland/logs/runs.jsonl`
+- **Config UI** (all four config surfaces, hybrid read-JSON / write-CLI): global repos list (slug, path); Asana fields (token, per-repo `asana_project`, `asana_filters`); per-repo `.copland.yml` (`task_source`, `repo_summary`, `conventions`, llm overrides); defaults & models (`max_files_changed`, `max_lines_changed`, `base_branch`, selector/planner/executor models). PHP grows a new `copland config show --json` (read) plus `copland config <subcommand>` (write); Godot shells out via `OS.execute` and never parses YAML itself.
+- **Run drill-in selection** (from `console-godot/TODO.md`): in the task drill-in view, ↑/↓ selects among runs and ENTER opens a per-run view (run id, status, prompts, tool calls). Reads from `~/.copland/tasks/<repo>/<id>/runs/<run-id>/` materialized in v2.0 Phase 21.
+- **Live-tail of an executing run** (from `console-godot/TODO.md`): when a task is in the `EXECUTING` state, the dossier (or a dedicated stream panel) tails the running executor's tool calls in real time. Requires the CLI to emit structured progress (NDJSON in `~/.copland/tasks/<repo>/<task>/runs/<run-id>/events.log`) the console can poll/stream.
 
 **Key context:**
-- Backend stays PHP/Laravel Zero — additive only; the earlier Go-rewrite direction is dropped (2026-05-26).
-- Godot is a **read-only** visual control plane — no editing, no live-tail in this milestone (deferred per `console-godot/TODO.md`).
-- v1.2 closed with Phase 18 only; Phase 19 (Init Wizard) was dropped because onboarding looks different with a console (see `milestones/v1.2-REQUIREMENTS.md`).
-- Phase numbering continues from Phase 18 — next phase is **19**.
+- Backend stays PHP/Laravel Zero — additive only.
+- v2.0 closed doc-complete on 2026-05-27; the `~/.copland/tasks/<repo>/<id>/` canonical-state layout from D-09 is the substrate v2.1 builds on.
+- Hybrid config architecture decided: PHP owns YAML read/write/validate via Symfony YAML; Godot consumes a JSON snapshot and invokes CLI subcommands for mutations — never reimplements schema knowledge in GDScript.
+- Live-tail (feature 3) forces a contract change on **both** sides (CLI must emit `events.log`; Godot must consume it) — it's the heaviest of the three and should land last in phase order.
+- Phase numbering continues from v2.0's Phase 22 — next phase is **23**.
 
 ## Evolution
 
@@ -133,4 +132,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-26 — v1.2 closed (Phase 19 dropped), v2.0 Godot Console started*
+*Last updated: 2026-05-29 — v2.0 closed doc-complete, v2.1 Godot Console — Configuration + Operational Surfaces started*
