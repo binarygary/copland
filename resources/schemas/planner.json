@@ -1,0 +1,59 @@
+{
+  "type": "object",
+  "properties": {
+    "decision": {
+      "type": "string"
+    },
+    "branch_name": {
+      "type": ["string", "null"]
+    },
+    "files_to_read": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "files_to_change": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "blocked_write_paths": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "steps": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "commands_to_run": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "tests_to_update": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "success_criteria": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "guardrails": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "pr_title": {
+      "type": ["string", "null"]
+    },
+    "pr_body": {
+      "type": ["string", "null"]
+    },
+    "max_files_changed": {
+      "type": ["integer", "null"]
+    },
+    "max_lines_changed": {
+      "type": ["integer", "null"]
+    },
+    "decline_reason": {
+      "type": ["string", "null"]
+    }
+  },
+  "required": ["decision"]
+}

@@ -81,6 +81,10 @@ class ClaudeSelectorService
 
     private function usageFromResponse(LlmResponse $response): ModelUsage
     {
+        if ($response->usage->providerCostUsd !== null) {
+            return ModelUsage::fromProviderCost($this->model, $response->usage->providerCostUsd);
+        }
+
         return AnthropicCostEstimator::forModel(
             $this->model,
             $response->usage->inputTokens,

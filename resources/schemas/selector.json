@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["act", "skip"]
+    },
+    "selected_task_id": {
+      "type": ["string", "integer", "null"]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "rejections": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  },
+  "required": ["decision"]
+}

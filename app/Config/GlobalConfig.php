@@ -68,6 +68,18 @@ api:
     max_attempts: 3
     base_delay_seconds: 1
 
+# llm:
+#   # Use Claude Code CLI (monthly plan) instead of Anthropic API for all stages:
+#   default:
+#     provider: claude-code
+#     model: sonnet              # optional: sonnet | opus | haiku | <full name>
+#     max_budget_usd: 0.50       # optional: per-stage budget cap
+#   # Or mix providers per stage:
+#   # stages:
+#   #   selector: { provider: anthropic }
+#   #   planner:  { provider: claude-code, model: sonnet }
+#   #   executor: { provider: claude-code, model: sonnet, allowed_tools: [Read, Edit, Write, "Bash(git status)"] }
+
 # repos:
 #   - slug: owner/repo
 #     path: /absolute/path/to/local/checkout

@@ -13,6 +13,24 @@ class ModelUsage
         public readonly int $cacheReadTokens = 0,
     ) {}
 
+    /**
+     * Build a ModelUsage from a provider-reported dollar cost (e.g. the
+     * `total_cost_usd` field in the Claude Code CLI envelope) with zero
+     * token counts. The CLI envelope does not surface token counts; the
+     * cost is authoritative.
+     */
+    public static function fromProviderCost(string $model, float $providerCostUsd): self
+    {
+        return new self(
+            model: $model,
+            inputTokens: 0,
+            outputTokens: 0,
+            estimatedCostUsd: $providerCostUsd,
+            cacheWriteTokens: 0,
+            cacheReadTokens: 0,
+        );
+    }
+
     public function add(?self $other): self
     {
         if ($other === null) {
