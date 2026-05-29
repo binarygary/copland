@@ -89,7 +89,11 @@
   3. The JSON schema is documented (inline in the command's `--help` and/or a fixture file under `tests/`) so downstream Godot consumers can pin against it
   4. Pest tests assert the JSON shape against a fixture global config + at least one fixture repo, including the token-redaction guarantee
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 23-01-PLAN.md — Ship config:show {--json} command + ConfigShowService + canonical fixture, with full Pest unit/feature coverage of shape, redaction, and error paths
+
 
 #### Phase 24: Config Write — Global Repos List
 
@@ -191,7 +195,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 23. Config Read Contract | 0/0 | Not started | - |
+| 23. Config Read Contract | 0/1 | Not started | - |
 | 24. Config Write — Global Repos List | 0/0 | Not started | - |
 | 25. Config Write — Per-Repo `.copland.yml` | 0/0 | Not started | - |
 | 26. Config Write — Asana Fields + Defaults & Models | 0/0 | Not started | - |
