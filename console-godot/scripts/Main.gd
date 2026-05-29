@@ -1623,9 +1623,15 @@ func _resolve_copland_bin() -> String:
     # minimal GUI PATH (e.g. launched from Finder), so the disk-scan fallback
     # (and its cross-repo id collision) isn't reached just because copland
     # isn't on PATH.
-    var repo_bin := ProjectSettings.globalize_path("res://..").path_join("copland")
-    if FileAccess.file_exists(repo_bin):
-        return repo_bin
+    #
+    # Source-tree runs only. In an exported/standalone build res://.. is the
+    # executable dir (not the repo), so this would risk running an arbitrary
+    # `copland` placed beside the app; skip it there and rely on the explicit
+    # --copland-bin / $COPLAND_BIN / PATH options above.
+    if not OS.has_feature("standalone"):
+        var repo_bin := ProjectSettings.globalize_path("res://..").path_join("copland")
+        if FileAccess.file_exists(repo_bin):
+            return repo_bin
     return ""
 
 
