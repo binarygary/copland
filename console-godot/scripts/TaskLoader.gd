@@ -305,3 +305,66 @@ static func load_runs(task_dir: String) -> Array:
         entry = d.get_next()
     rows.sort_custom(func(a, b): return int(a.mtime) > int(b.mtime))
     return rows
+
+
+# Pull the unified Task Manifest from the CLI: `copland tasks --json`. The CLI
+# is the source of truth — it fetches the GitHub backlog, runs the prefilter,
+# and overlays the local run-store. Returns an Array of task dicts on success
+# (possibly empty for an empty backlog), or `null` when the binary can't be
+# invoked or stdout isn't the expected JSON — callers fall back to
+# load_real_or_sample() on null.
+#
+# Safe to call from a worker Thread: it only touches OS.execute / FileAccess /
+# JSON, never the scene tree.
+static func load_from_cli(copland_bin: String) -> Variant:
+    if copland_bin == "" or not FileAccess.file_exists(copland_bin):
+        return null
+    var output: Array = []
+    var exit_code: int = OS.execute(
+        copland_bin, PackedStringArray(["tasks", "--json"]), output, true)
+    if exit_code != 0 or output.is_empty():
+        return null
+    var raw := ""
+    for chunk in output:
+        raw += String(chunk)
+    return _parse_tasks_json(raw)
+
+
+static func _parse_tasks_json(raw: String) -> Variant:
+    var json := JSON.new()
+    if json.parse(raw) != OK:
+        return null
+    var data = json.data
+    if typeof(data) != TYPE_DICTIONARY:
+        return null
+    var list = data.get("tasks", null)
+    if typeof(list) != TYPE_ARRAY:
+        return null
+    var out: Array = []
+    for entry in list:
+        if typeof(entry) == TYPE_DICTIONARY:
+            out.append(_normalize_cli_task(entry))
+    return out
+
+
+# Coerce a CLI task row into the exact dict shape the renderer expects, with
+# defaults for any missing key so the UI never reads a null field.
+static func _normalize_cli_task(t: Dictionary) -> Dictionary:
+    var files = t.get("files_to_change", [])
+    return {
+        "id": String(t.get("id", "")),
+        "title": String(t.get("title", "")),
+        "repo": String(t.get("repo", "")),
+        "repo_path": String(t.get("repo_path", "")),
+        "state": String(t.get("state", "new")),
+        "issue": String(t.get("issue", "")),
+        "branch": String(t.get("branch", "")),
+        "files_to_change": files if typeof(files) == TYPE_ARRAY else [],
+        "summary": String(t.get("summary", "")),
+        "created": String(t.get("created", "")),
+        "updated": String(t.get("updated", "")),
+        "runs_count": int(t.get("runs_count", 0)),
+        "task_dir": String(t.get("task_dir", "")),
+        "is_real": bool(t.get("is_real", true)),
+        "url": String(t.get("url", "")),
+    }

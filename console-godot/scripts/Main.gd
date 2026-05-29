@@ -162,6 +162,9 @@ var drill_runs_box: VBoxContainer
 # Refresh
 var refresh_timer: Timer
 const REFRESH_INTERVAL := 2.0
+# Re-pull the manifest from the CLI every Nth tick (15 × 2s ≈ 30s). The pull
+# runs on a worker thread (see tasks_thread) so it never stalls the UI.
+const TASKS_PULL_EVERY := 15
 
 # Operations log + async CLI spawn
 #
@@ -181,6 +184,10 @@ var ops_log_lines_box: VBoxContainer
 var ops_log_buffer: Array = []
 var ops_thread: Thread = null
 var ops_thread_label: String = ""
+# Background manifest pull (copland tasks --json). Separate from ops_thread so a
+# long-running `copland run` and a routine manifest refresh never contend.
+var tasks_thread: Thread = null
+var tasks_pull_counter: int = 0
 var status_dot: Control
 var status_label: Label
 
@@ -214,7 +221,13 @@ var drift_t: float = 0.0
 
 func _ready() -> void:
     _load_registered_repos()
-    tasks = TaskLoader.load_real_or_sample(registered_repos)
+    copland_bin = _resolve_copland_bin()
+    # The CLI (`copland tasks --json`) is the source of truth: GitHub backlog +
+    # prefilter + run-store overlay. Initial pull is synchronous (a one-time
+    # startup cost); periodic refreshes run on a worker thread. Fall back to the
+    # local store + sample data only when the CLI can't be reached.
+    var cli_tasks = TaskLoader.load_from_cli(copland_bin)
+    tasks = cli_tasks if cli_tasks != null else TaskLoader.load_real_or_sample(registered_repos)
     _build_ui()
     _build_modal()
     _build_text_modal()
@@ -233,19 +246,70 @@ func _ready() -> void:
 
 
 func _on_refresh_tick() -> void:
+    # Light tick (every REFRESH_INTERVAL): pick up externally-edited drill-in
+    # notes promptly without re-pulling the whole manifest.
+    if drill_in_visible:
+        _populate_drill_in()
+
+    # Heavy pull on a slower cadence, dispatched to a worker thread so the
+    # synchronous CLI call never stalls the UI. Results land in
+    # _poll_tasks_thread() (called from _process).
+    tasks_pull_counter += 1
+    if tasks_pull_counter >= TASKS_PULL_EVERY:
+        tasks_pull_counter = 0
+        _start_tasks_pull()
+
+
+# Kick off a manifest refresh on a worker thread. No-op if a pull is already in
+# flight or the binary is unresolved.
+func _start_tasks_pull() -> void:
+    if tasks_thread != null:
+        return
+    if copland_bin == "":
+        return
+    tasks_thread = Thread.new()
+    tasks_thread.start(_tasks_pull_worker.bind(copland_bin))
+
+
+# Runs off the main loop — must not touch the scene tree (TaskLoader only uses
+# OS.execute / FileAccess / JSON).
+func _tasks_pull_worker(bin: String) -> Variant:
+    return TaskLoader.load_from_cli(bin)
+
+
+func _poll_tasks_thread() -> void:
+    if tasks_thread == null or not tasks_thread.is_started():
+        return
+    if tasks_thread.is_alive():
+        return
+    var result = tasks_thread.wait_to_finish()
+    tasks_thread = null
+    # null → CLI unreachable / bad output: keep the current manifest rather than
+    # blanking the view on a transient failure.
+    if typeof(result) == TYPE_ARRAY:
+        _apply_new_tasks(result)
+
+
+func _exit_tree() -> void:
+    # Join the short-lived manifest-pull thread so it isn't freed mid-run.
+    if tasks_thread != null and tasks_thread.is_started():
+        tasks_thread.wait_to_finish()
+        tasks_thread = null
+
+
+# Diff incoming tasks against the current set and, if changed, swap them in
+# while preserving the user's selection (by id) and scroll position.
+func _apply_new_tasks(new_tasks: Array) -> void:
     var prev_selected_id := ""
     if not filtered_tasks.is_empty() and selected_task_index < filtered_tasks.size():
         prev_selected_id = String(filtered_tasks[selected_task_index].id)
 
-    var new_tasks: Array = TaskLoader.load_real_or_sample(registered_repos)
     if _tasks_signature(new_tasks) == _tasks_signature(tasks):
-        # Task set unchanged. Drill-in still re-reads its sidecar notes file
-        # so externally-edited notes show up within the refresh interval.
         if drill_in_visible:
             _populate_drill_in()
         return
 
-    # Detect state transitions before swapping `tasks` so we can flash rows
+    # Detect state transitions before swapping `tasks` so changed rows flash.
     var prev_state_map: Dictionary = {}
     for t in tasks:
         prev_state_map[String(t.id)] = String(t.state)
@@ -258,7 +322,6 @@ func _on_refresh_tick() -> void:
     tasks = new_tasks
     _apply_state_filter()
 
-    # Restore selection by id if still present in the filtered set
     if prev_selected_id != "":
         for i in filtered_tasks.size():
             if String(filtered_tasks[i].id) == prev_selected_id:
@@ -318,6 +381,7 @@ func _process(dt: float) -> void:
     queue_redraw()
     _pulse_selected_row()
     _poll_ops_thread()
+    _poll_tasks_thread()
 
 
 func _update_focus_glow() -> void:
