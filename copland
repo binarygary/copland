@@ -1,4 +1,4 @@
-#!/usr/bin/env php
+#!/usr/bin/env -S XDEBUG_MODE=off php
 <?php
 
 define('LARAVEL_START', microtime(true));
