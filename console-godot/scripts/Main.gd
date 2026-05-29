@@ -1617,6 +1617,21 @@ func _resolve_copland_bin() -> String:
         var path: String = String(probe[0]).strip_edges()
         if path != "" and FileAccess.file_exists(path):
             return path
+    # Last resort: the copland binary in the repo this console ships inside
+    # (console-godot/ lives at <repo>/console-godot; the binary is <repo>/copland).
+    # Self-resolving — works with no --copland-bin arg, no $COPLAND_BIN, and a
+    # minimal GUI PATH (e.g. launched from Finder), so the disk-scan fallback
+    # (and its cross-repo id collision) isn't reached just because copland
+    # isn't on PATH.
+    #
+    # Source-tree runs only. In an exported/standalone build res://.. is the
+    # executable dir (not the repo), so this would risk running an arbitrary
+    # `copland` placed beside the app; skip it there and rely on the explicit
+    # --copland-bin / $COPLAND_BIN / PATH options above.
+    if not OS.has_feature("standalone"):
+        var repo_bin := ProjectSettings.globalize_path("res://..").path_join("copland")
+        if FileAccess.file_exists(repo_bin):
+            return repo_bin
     return ""
 
 
