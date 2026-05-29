@@ -320,8 +320,10 @@ static func load_from_cli(copland_bin: String) -> Variant:
     if copland_bin == "" or not FileAccess.file_exists(copland_bin):
         return null
     var output: Array = []
+    # read_stderr stays false: stderr is where the CLI routes warnings/errors,
+    # and merging it into stdout would corrupt the JSON we parse below.
     var exit_code: int = OS.execute(
-        copland_bin, PackedStringArray(["tasks", "--json"]), output, true)
+        copland_bin, PackedStringArray(["tasks", "--json"]), output, false)
     if exit_code != 0 or output.is_empty():
         return null
     var raw := ""
