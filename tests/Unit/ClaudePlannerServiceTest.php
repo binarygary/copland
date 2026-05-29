@@ -267,6 +267,44 @@ it('planner drops changes entries for files it did not read this loop', function
     }
 });
 
+it('planner keeps changes entries when changes path normalizes to a read path', function () {
+    // Regression: $readPaths is keyed by the normalized path from
+    // ExecutorPolicy::assertToolPathAllowed, so the changes filter must
+    // normalize $change['file'] the same way. Without normalization, reading
+    // `src/file.txt` and emitting a change for `./src/file.txt` would be
+    // silently dropped even though the file was actually read.
+    $workspace = makePlannerWorkspace();
+    $readRelative = 'src/file.txt';
+    $changeRelativeWithDotSlash = './src/file.txt';
+    mkdir($workspace.'/src', 0755, true);
+    file_put_contents($workspace.'/'.$readRelative, "hello\n");
+
+    $finalJson = fullPlanJsonWith([
+        'files_to_change' => [$readRelative],
+        'files_to_read' => [$readRelative],
+        'changes' => [
+            ['file' => $changeRelativeWithDotSlash, 'old' => 'hello', 'new' => 'world', 'reason' => 'normalize'],
+        ],
+    ]);
+
+    [$service] = array_values(makePlanner([
+        plannerResponse('tool_calls', [plannerToolUseBlock('t1', 'read_file', ['path' => $readRelative])]),
+        plannerResponse('stop', [plannerTextBlock(json_encode($finalJson, JSON_PRETTY_PRINT))]),
+    ]));
+
+    try {
+        $result = $service->planTask(
+            ['workspace_path' => $workspace, 'max_planner_rounds' => 4],
+            ['number' => 1, 'title' => 'normalize', 'body' => '', 'html_url' => ''],
+        );
+
+        expect($result->changes)->toHaveCount(1);
+        expect($result->changes[0]['file'])->toBe($changeRelativeWithDotSlash);
+    } finally {
+        deletePlannerDirectory($workspace);
+    }
+});
+
 it('planner workspace path falls back to repo_path before getcwd', function () {
     $workspace = makePlannerWorkspace();
     $fixtureRelative = 'src/file.txt';

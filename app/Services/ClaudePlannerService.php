@@ -126,12 +126,24 @@ class ClaudePlannerService
                 // Enforce the contract: a `changes` entry's `file` MUST be one
                 // the planner read via read_file in this loop. Drop the rest —
                 // the executor will fall back to `steps` for those edits.
+                // Normalize each candidate path through the same policy call
+                // that keyed $readPaths so equivalent spellings (e.g. "src/x"
+                // vs "./src/x") match; disallowed paths drop out.
                 $changes = array_values(array_filter(
                     $changes,
-                    fn ($change): bool => is_array($change)
-                        && isset($change['file'])
-                        && is_string($change['file'])
-                        && isset($readPaths[$change['file']])
+                    function ($change) use ($readPaths, $policy): bool {
+                        if (! is_array($change) || ! isset($change['file']) || ! is_string($change['file'])) {
+                            return false;
+                        }
+
+                        try {
+                            $normalized = $policy->assertToolPathAllowed($change['file'], 'read_file');
+                        } catch (Throwable) {
+                            return false;
+                        }
+
+                        return isset($readPaths[$normalized]);
+                    }
                 ));
 
                 return new PlanResult(
