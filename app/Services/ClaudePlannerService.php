@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Config\GlobalConfig;
 use App\Contracts\LlmClient;
+use App\Data\LlmResponse;
+use App\Data\ModelUsage;
 use App\Data\PlanResult;
 use App\Exceptions\PolicyViolationException;
 use App\Support\AnthropicCostEstimator;
@@ -291,5 +293,21 @@ class ClaudePlannerService
         }
 
         return $data;
+    }
+
+
+    private function usageFromResponse(LlmResponse $response): ModelUsage
+    {
+        if ($response->usage->providerCostUsd !== null) {
+            return ModelUsage::fromProviderCost($this->model, $response->usage->providerCostUsd);
+        }
+
+        return AnthropicCostEstimator::forModel(
+            $this->model,
+            $response->usage->inputTokens,
+            $response->usage->outputTokens,
+            $response->usage->cacheWriteTokens,
+            $response->usage->cacheReadTokens,
+        );
     }
 }

@@ -10,6 +10,8 @@ allowed_commands:
   - composer
   - npm
   - pest
+  - ./vendor/bin/pest
+  - ./vendor/bin/pint
 
 blocked_paths:
   - database/migrations

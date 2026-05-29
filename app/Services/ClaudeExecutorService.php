@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Config\GlobalConfig;
 use App\Contracts\LlmClient;
 use App\Data\ExecutionResult;
+use App\Data\ModelUsage;
 use App\Data\PlanResult;
 use App\Data\SystemBlock;
 use App\Exceptions\PolicyViolationException;
@@ -74,6 +75,9 @@ class ClaudeExecutorService
         $totalOutputTokens = 0;
         $totalCacheWriteTokens = 0;
         $totalCacheReadTokens = 0;
+        // Null = no round reported a provider cost (fall through to token-based estimate).
+        // Once any round reports one, this becomes a float accumulator across all rounds.
+        $totalProviderCostUsd = null;
 
         while (true) {
             $round++;
@@ -85,7 +89,7 @@ class ClaudeExecutorService
                     toolCallLog: $toolCallLog,
                     toolCallCount: count($toolCallLog),
                     durationSeconds: microtime(true) - $startTime,
-                    usage: AnthropicCostEstimator::forModel($this->model, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens),
+                    usage: $this->buildUsage($totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens, $totalProviderCostUsd),
                 );
             }
 
@@ -106,7 +110,10 @@ class ClaudeExecutorService
             $totalOutputTokens += $response->usage->outputTokens;
             $totalCacheWriteTokens += $response->usage->cacheWriteTokens;
             $totalCacheReadTokens += $response->usage->cacheReadTokens;
-            $this->updateSnapshot($snapshot, $startTime, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens);
+            if ($response->usage->providerCostUsd !== null) {
+                $totalProviderCostUsd = ($totalProviderCostUsd ?? 0.0) + $response->usage->providerCostUsd;
+            }
+            $this->updateSnapshot($snapshot, $startTime, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens, $totalProviderCostUsd);
 
             $toolUses = 0;
             foreach ($response->content as $block) {
@@ -145,7 +152,7 @@ class ClaudeExecutorService
                     toolCallLog: $toolCallLog,
                     toolCallCount: count($toolCallLog),
                     durationSeconds: microtime(true) - $startTime,
-                    usage: AnthropicCostEstimator::forModel($this->model, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens),
+                    usage: $this->buildUsage($totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens, $totalProviderCostUsd),
                 );
             }
 
@@ -213,7 +220,7 @@ class ClaudeExecutorService
                     toolCallLog: $toolCallLog,
                     toolCallCount: count($toolCallLog),
                     durationSeconds: microtime(true) - $startTime,
-                    usage: AnthropicCostEstimator::forModel($this->model, $totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens),
+                    usage: $this->buildUsage($totalInputTokens, $totalOutputTokens, $totalCacheWriteTokens, $totalCacheReadTokens, $totalProviderCostUsd),
                 );
             }
         }
@@ -228,14 +235,31 @@ class ClaudeExecutorService
         return (string) file_get_contents(base_path('resources/prompts/executor.md'));
     }
 
-    private function updateSnapshot(?RunProgressSnapshot $snapshot, float $startTime, int $totalInputTokens, int $totalOutputTokens, int $cacheWrite = 0, int $cacheRead = 0): void
+    private function updateSnapshot(?RunProgressSnapshot $snapshot, float $startTime, int $totalInputTokens, int $totalOutputTokens, int $cacheWrite = 0, int $cacheRead = 0, ?float $providerCostUsd = null): void
     {
         if ($snapshot === null) {
             return;
         }
 
-        $snapshot->executorUsage = AnthropicCostEstimator::forModel($this->model, $totalInputTokens, $totalOutputTokens, $cacheWrite, $cacheRead);
+        $snapshot->executorUsage = $this->buildUsage($totalInputTokens, $totalOutputTokens, $cacheWrite, $cacheRead, $providerCostUsd);
         $snapshot->executorDurationSeconds = microtime(true) - $startTime;
+    }
+
+    /**
+     * Build a ModelUsage for the executor's accumulated counters.
+     *
+     * When the wrapped provider reported a dollar cost on any round (claude-code
+     * sets `providerCostUsd`), bypass AnthropicCostEstimator and emit a
+     * token-less ModelUsage — even when the accumulated cost is exactly 0
+     * (free/cached run). Otherwise fall back to the per-model rate table.
+     */
+    private function buildUsage(int $in, int $out, int $cw, int $cr, ?float $providerCost): ModelUsage
+    {
+        if ($providerCost !== null) {
+            return ModelUsage::fromProviderCost($this->model, $providerCost);
+        }
+
+        return AnthropicCostEstimator::forModel($this->model, $in, $out, $cw, $cr);
     }
 
     private function report(?callable $progressCallback, string $message): void

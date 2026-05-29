@@ -29,8 +29,40 @@ final class LlmClientFactory
         return match ($config['provider'] ?? 'anthropic') {
             'ollama' => self::buildOllama($config),
             'openrouter' => self::buildOpenRouter($config),
+            'claude-code' => self::buildClaudeCode($config, $stage, $repo),
             default => self::buildAnthropic($global),
         };
+    }
+
+    /**
+     * Return deduplicated list of ['binary_path', 'model'] entries for all
+     * claude-code-configured stages. Used by RunCommand for startup warning.
+     */
+    public static function claudeCodeStageConfigs(GlobalConfig $global, ?RepoConfig $repo = null): array
+    {
+        $stages = ['selector', 'planner', 'executor'];
+        $seen = [];
+        $result = [];
+
+        foreach ($stages as $stage) {
+            $config = self::resolveConfig($stage, $global, $repo);
+
+            if (($config['provider'] ?? '') !== 'claude-code') {
+                continue;
+            }
+
+            $binaryPath = $config['binary_path'] ?? 'claude';
+            $model = $config['model'] ?? '';
+
+            if (isset($seen[$binaryPath])) {
+                continue;
+            }
+
+            $seen[$binaryPath] = true;
+            $result[] = ['binary_path' => $binaryPath, 'model' => $model];
+        }
+
+        return $result;
     }
 
     /**
@@ -143,5 +175,85 @@ final class LlmClientFactory
             ->make();
 
         return new OpenAiCompatClient($client);
+    }
+
+    /**
+     * Per-stage allowed-tools defaults for the claude-code provider.
+     * Overridable via per-stage config key `allowed_tools: [...]` (REPLACES the default).
+     *
+     * @return array<int, string>
+     */
+    private static function claudeCodeDefaultAllowedTools(string $stage): array
+    {
+        return match ($stage) {
+            'selector' => [],
+            'planner' => ['Read'],
+            'executor' => ['Read', 'Edit', 'Write', 'Bash(git status)', 'Bash(git diff *)'],
+            default => [],
+        };
+    }
+
+    /**
+     * Build a ClaudeCodeClient for a stage configured with provider=claude-code.
+     *
+     * Per-stage allowed-tools come from `allowed_tools` in config when present
+     * (REPLACES default), or the built-in default otherwise. For the executor
+     * stage, the repo's `allowed_commands` are mapped to `Bash(<first-word> *)`
+     * entries and appended to the default whitelist (deduped).
+     *
+     * The JSON schema for `--json-schema` is loaded from
+     * `resources/schemas/{$stage}.json` for selector and planner. The executor
+     * stage uses an inline minimal {summary: string} schema since the executor's
+     * "result" is the final summary text.
+     */
+    private static function buildClaudeCode(array $config, string $stage, ?RepoConfig $repo): ClaudeCodeClient
+    {
+        $binaryPath = $config['binary_path'] ?? 'claude';
+        $model = $config['model'] ?? null;
+        $maxBudgetUsd = isset($config['max_budget_usd']) ? (float) $config['max_budget_usd'] : null;
+
+        if (isset($config['allowed_tools']) && is_array($config['allowed_tools'])) {
+            $allowedTools = array_values($config['allowed_tools']);
+        } else {
+            $allowedTools = self::claudeCodeDefaultAllowedTools($stage);
+
+            if ($stage === 'executor' && $repo !== null) {
+                foreach ($repo->allowedCommands() as $cmd) {
+                    $first = preg_split('/\s+/', trim((string) $cmd), 2)[0] ?? '';
+                    if ($first === '') {
+                        continue;
+                    }
+                    $entry = "Bash({$first} *)";
+                    if (! in_array($entry, $allowedTools, true)) {
+                        $allowedTools[] = $entry;
+                    }
+                }
+            }
+        }
+
+        if ($stage === 'executor') {
+            // The executor returns a free-form summary; constrain only that field.
+            $schema = '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}';
+        } else {
+            $schemaPath = base_path("resources/schemas/{$stage}.json");
+            $schema = @file_get_contents($schemaPath);
+            if ($schema === false) {
+                throw new \RuntimeException(
+                    "claude-code: schema file not found or unreadable for stage '{$stage}' at {$schemaPath}"
+                );
+            }
+        }
+
+        // RunCommand::runRepo() has already chdir($path) before the factory call,
+        // so getcwd() is the workspace root.
+        $cwd = getcwd() ?: '.';
+
+        return new ClaudeCodeClient(
+            runner: new ClaudeCodeRunner($binaryPath),
+            jsonSchema: $schema,
+            allowedTools: $allowedTools,
+            workspaceCwd: $cwd,
+            maxBudgetUsd: $maxBudgetUsd,
+        );
     }
 }
