@@ -471,7 +471,9 @@ class RunOrchestratorService
             'status' => $status,
             'pr_number' => $payload['pr']['number'] ?? '',
             'pr_url' => (string) ($payload['pr']['url'] ?? ''),
-            'cost_usd' => (string) $totalCost,
+            // number_format with explicit '.' decimal separator is locale-safe;
+            // sprintf('%.6f', ...) would emit '0,123456' under LC_NUMERIC=de_DE.
+            'cost_usd' => number_format($totalCost, 6, '.', ''),
             'started_at' => $startedAtZ,
             'finished_at' => $finishedAtZ,
             'failure_reason' => (string) ($payload['failure_reason'] ?? ''),
