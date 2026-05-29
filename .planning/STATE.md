@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Godot Console — Configuration + Operational Surfaces
 status: planning
-last_updated: "2026-05-29T01:46:59.879Z"
+last_updated: "2026-05-29T02:00:00.000Z"
 last_activity: 2026-05-29
 progress:
-  total_phases: 0
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,30 +17,30 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-26)
+See: .planning/PROJECT.md (updated 2026-05-29)
 
 **Core value:** A reliable overnight agent that opens merge-ready PRs without intervention.
-**Current focus:** Phase 21 — per-run-artifacts-test-coverage
+**Current focus:** Phase 23 — Config Read Contract (`copland config show --json`)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 23 — Config Read Contract
 Plan: —
-Status: Defining requirements
-Last activity: 2026-05-29 — Milestone v2.1 started
+Status: Roadmap approved, awaiting first plan
+Last activity: 2026-05-29 — v2.1 roadmap created (Phases 23-29, 12 reqs mapped)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 28 (across v1.0–v1.2)
+- Total plans completed: 28 (across v1.0–v1.2) + 9 (v2.0) = 37
 - Average duration: —
 - Total execution time: 0 hours
 
 **Recent Trend:**
 
-- Last milestone: v1.2 closed partial — Phase 18 shipped, Phase 19 dropped
-- Trend: Direction reset (Go rewrite abandoned; Godot frontend adopted)
+- Last milestone: v2.0 shipped doc-complete 2026-05-27 (Phases 19-22)
+- Trend: Console direction continuing — v2.1 turns the read-only console into a config + live-monitoring surface
 
 *Updated after each plan completion*
 
@@ -51,12 +51,12 @@ Last activity: 2026-05-29 — Milestone v2.1 started
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- v1.2 closed with Phase 18 only; Phase 19 (Init Wizard, INIT-01..07) dropped — onboarding will be redesigned around the Godot console (2026-05-26)
-- Earlier Go-rewrite direction dropped — backend stays PHP/Laravel Zero, additive only (2026-05-26)
-- Godot frontend is read-only for v2.0 — live-tail and editing deferred per `console-godot/TODO.md`
-- v2.0 phase numbering: 19 (Prototype Recovery + `copland console`) → 20 (task.md/status.md writer) → 21 (per-run artifacts + tests) → 22 (E2E smoke + docs)
-- Plan 22-01 smoke ran against a LOCAL Ollama provider (qwen3-coder:latest) instead of Anthropic — CONS-01 contract is provider-agnostic so the writer/render path was still exercised end-to-end; three multi-provider polish items deferred (config drift, tool-capable allowlist, cost estimate against local providers) (2026-05-27)
-- Plan 22-02 documented the D-09 canonical-purpose split in both READMEs: `~/.copland/tasks/` = live console state (markdown + YAML, mutates per lifecycle, source of truth for Godot console); `~/.copland/logs/runs.jsonl` = append-only audit trail (one JSON record per run, never modified after append, not consumed by console). Rule of thumb: "What's running right now? → tasks/. What happened over the last 30 nights? → runs.jsonl." (2026-05-27)
+- v2.1 phase numbering continues from v2.0's Phase 22 — new phases run 23-29 (2026-05-29)
+- Hybrid config architecture: PHP owns YAML read/write/validate via Symfony YAML; Godot consumes `copland config show --json` and invokes `copland config <subcommand>` for mutations; never reimplements YAML schema in GDScript (PROJECT.md v2.1 milestone context, 2026-05-29)
+- CFG-06 is a cross-cutting invariant — verified in Phases 24/25/26 rather than its own phase (2026-05-29)
+- Live-tail split into CLI emitter (Phase 28, PHP only) and console consumer (Phase 29, Godot only) so the contract is settled on one side before the other lands (2026-05-29)
+- DRILL phase build order: render first (DRILL-03), then row selection (DRILL-01), then ENTER/ESC navigation (DRILL-02) — single Phase 27 (2026-05-29)
+- Plan 22-02 documented the D-09 canonical-purpose split in both READMEs: `~/.copland/tasks/` = live console state (markdown + YAML, mutates per lifecycle, source of truth for Godot console); `~/.copland/logs/runs.jsonl` = append-only audit trail (one JSON record per run, never modified after append, not consumed by console) (2026-05-27)
 
 ### Pending Todos
 
@@ -69,11 +69,10 @@ None.
 
 ### Blockers/Concerns
 
-- Godot prototype lives only on `backup/local-main-diverged-20260526` — recovery onto `main` is Phase 19's first concrete piece of work
-- `~/.copland/tasks/<repo>/<id>/{task.md, status.md}` is read by `console-godot/scripts/TaskLoader.gd` but the PHP CLI does not yet write that layout (it logs to `~/.copland/logs/runs.jsonl`) — Phases 20-21 close this gap
+- None known at roadmap time. Phase 28 (events.log emitter) is the riskiest because it touches the executor's hot tool-dispatch path; Phase 29 depends on Phase 28's schema being stable.
 
 ## Session Continuity
 
-Last session: 2026-05-27T23:59:00Z
-Stopped at: Phase 22 Plan 02 complete — v2.0 Godot Console milestone doc-complete (all 3 CONS requirements satisfied)
-Resume file: None — milestone closed. Next session should pick the next milestone direction (see PROJECT.md and `console-godot/TODO.md` v2.1 items as candidates).
+Last session: 2026-05-29T02:00:00Z
+Stopped at: v2.1 roadmap created — Phases 23-29 defined, 12/12 requirements mapped, awaiting first plan
+Resume file: None — start with `/gsd:plan-phase 23` for the CLI read-contract phase.

@@ -56,19 +56,19 @@ Explicit exclusions:
 
 ## Traceability
 
-| REQ-ID   | Phase | Status      |
-|----------|-------|-------------|
-| CFG-01   | TBD   | Not started |
-| CFG-02   | TBD   | Not started |
-| CFG-03   | TBD   | Not started |
-| CFG-04   | TBD   | Not started |
-| CFG-05   | TBD   | Not started |
-| CFG-06   | TBD   | Not started |
-| DRILL-01 | TBD   | Not started |
-| DRILL-02 | TBD   | Not started |
-| DRILL-03 | TBD   | Not started |
-| LIVE-01  | TBD   | Not started |
-| LIVE-02  | TBD   | Not started |
-| LIVE-03  | TBD   | Not started |
+| REQ-ID   | Phase    | Status      |
+|----------|----------|-------------|
+| CFG-01   | Phase 23 | Not started |
+| CFG-02   | Phase 24 | Not started |
+| CFG-03   | Phase 26 | Not started |
+| CFG-04   | Phase 25 | Not started |
+| CFG-05   | Phase 26 | Not started |
+| CFG-06   | Phase 24, 25, 26 (cross-cutting invariant) | Not started |
+| DRILL-01 | Phase 27 | Not started |
+| DRILL-02 | Phase 27 | Not started |
+| DRILL-03 | Phase 27 | Not started |
+| LIVE-01  | Phase 28 | Not started |
+| LIVE-02  | Phase 29 | Not started |
+| LIVE-03  | Phase 29 | Not started |
 
 *Phase column filled by roadmapper.*
