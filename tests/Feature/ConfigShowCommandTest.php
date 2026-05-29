@@ -146,3 +146,89 @@ YAML,
 
     $cleanup();
 });
+
+// ---------------------------------------------------------------------------
+// Task 4: error-path coverage
+// ---------------------------------------------------------------------------
+
+it('exits non-zero with stderr message and no JSON on stdout when ~/.copland.yml is missing', function () {
+    // No global YAML written — the tmp HOME is empty. The command MUST detect
+    // this BEFORE instantiating GlobalConfig (whose ctor would silently create
+    // a default file and mask the error).
+    [$home, $cleanup] = setupConfigShowHome();
+
+    $tester = makeConfigShowTester();
+    $exitCode = $tester->execute(['--json' => true], ['capture_stderr_separately' => true]);
+
+    expect($exitCode)->not->toBe(0);
+    expect($tester->getErrorOutput())->toContain('.copland.yml');
+    // No JSON on stdout.
+    expect(trim($tester->getDisplay()))->toBe('');
+    // And the bootstrap MUST NOT have created the file as a side effect of running the command.
+    expect(file_exists($home.'/.copland.yml'))->toBeFalse();
+
+    $cleanup();
+});
+
+it('exits non-zero with a stderr parse-error message when ~/.copland.yml is malformed', function () {
+    [, $cleanup] = setupConfigShowHome(
+        globalYaml: "defaults:\n  - bad: [unterminated\n",
+    );
+
+    $tester = makeConfigShowTester();
+    $exitCode = $tester->execute(['--json' => true], ['capture_stderr_separately' => true]);
+
+    expect($exitCode)->not->toBe(0);
+    $err = $tester->getErrorOutput();
+    // Error must point the user at the file and indicate a parse failure.
+    expect($err)->toContain('.copland.yml');
+    expect(strtolower($err))->toContain('parse');
+    // No JSON on stdout.
+    expect(trim($tester->getDisplay()))->toBe('');
+
+    $cleanup();
+});
+
+it('exits non-zero with a stderr message naming the missing path when a configured repo path does not exist', function () {
+    [, $cleanup] = setupConfigShowHome(
+        globalYaml: <<<'YAML'
+claude_api_key: ""
+repos:
+  - slug: owner/ghost
+    path: /tmp/copland-does-not-exist-zzz-23-01
+YAML,
+    );
+
+    $tester = makeConfigShowTester();
+    $exitCode = $tester->execute(['--json' => true], ['capture_stderr_separately' => true]);
+
+    expect($exitCode)->not->toBe(0);
+    $err = $tester->getErrorOutput();
+    expect($err)->toContain('owner/ghost');
+    expect($err)->toContain('/tmp/copland-does-not-exist-zzz-23-01');
+    // No JSON on stdout.
+    expect(trim($tester->getDisplay()))->toBe('');
+
+    $cleanup();
+});
+
+it('emits nothing on stdout in --json mode when erroring (stderr-only error channel)', function () {
+    // Re-use the missing-global-config setup but assert the stdout/stderr split
+    // explicitly through capture_stderr_separately. This is the JSON-mode-stdout-
+    // is-pure invariant: a downstream consumer that pipes stdout into jq must
+    // never see a partial document on error.
+    [, $cleanup] = setupConfigShowHome();
+
+    $tester = makeConfigShowTester();
+    $tester->execute(['--json' => true], ['capture_stderr_separately' => true]);
+
+    $stdout = $tester->getDisplay();
+    $stderr = $tester->getErrorOutput();
+
+    // stdout must be empty (or pure whitespace) — NO partial JSON.
+    expect(trim($stdout))->toBe('');
+    // Error message lives on stderr.
+    expect($stderr)->not->toBe('');
+
+    $cleanup();
+});
