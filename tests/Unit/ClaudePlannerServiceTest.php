@@ -25,12 +25,12 @@ function plannerToolUseBlock(string $id, string $name, array $input): array
     ];
 }
 
-function plannerResponse(string $stopReason, array $content): LlmResponse
+function plannerResponse(string $stopReason, array $content, ?float $providerCostUsd = null): LlmResponse
 {
     return new LlmResponse(
         content: $content,
         stopReason: $stopReason,
-        usage: new LlmUsage(inputTokens: 10, outputTokens: 5),
+        usage: new LlmUsage(inputTokens: 10, outputTokens: 5, providerCostUsd: $providerCostUsd),
     );
 }
 
@@ -333,6 +333,70 @@ it('planner workspace path falls back to repo_path before getcwd', function () {
 
         expect($result->changes)->toHaveCount(1);
         expect($result->changes[0]['file'])->toBe($fixtureRelative);
+    } finally {
+        deletePlannerDirectory($workspace);
+    }
+});
+
+it('planner accumulates providerCostUsd across rounds and bypasses the token estimator', function () {
+    // Mirrors ClaudeExecutorService::buildUsage behavior: when any round in
+    // the agentic loop carries a providerCostUsd (the claude-code provider's
+    // shape), the final ModelUsage carries the summed provider cost rather
+    // than an estimate derived from token counts.
+    $workspace = makePlannerWorkspace();
+    $fixtureRelative = 'src/file.txt';
+    mkdir($workspace.'/src', 0755, true);
+    file_put_contents($workspace.'/'.$fixtureRelative, "hello\n");
+
+    $finalJson = fullPlanJsonWith([
+        'files_to_change' => [$fixtureRelative],
+        'files_to_read' => [$fixtureRelative],
+        'changes' => [
+            ['file' => $fixtureRelative, 'old' => 'hello', 'new' => 'world', 'reason' => 'demo'],
+        ],
+    ]);
+
+    [$service] = array_values(makePlanner([
+        plannerResponse('tool_calls', [plannerToolUseBlock('t1', 'read_file', ['path' => $fixtureRelative])], providerCostUsd: 0.0100),
+        plannerResponse('stop', [plannerTextBlock(json_encode($finalJson, JSON_PRETTY_PRINT))], providerCostUsd: 0.0023),
+    ]));
+
+    try {
+        $result = $service->planTask(
+            ['workspace_path' => $workspace, 'max_planner_rounds' => 4],
+            ['number' => 1, 'title' => 'providercost', 'body' => '', 'html_url' => ''],
+        );
+
+        expect($result->usage)->not->toBeNull();
+        // 0.0100 + 0.0023 = 0.0123 — summed across the loop, not estimated from tokens.
+        expect($result->usage->estimatedCostUsd)->toBe(0.0123);
+        expect($result->usage->inputTokens)->toBe(0);
+        expect($result->usage->outputTokens)->toBe(0);
+    } finally {
+        deletePlannerDirectory($workspace);
+    }
+});
+
+it('planner falls back to the token estimator when no round reports providerCostUsd', function () {
+    // Counterpart to the providerCost test: ensures the null-providerCost
+    // path still produces an estimated cost from token counts (existing
+    // Anthropic-API behavior).
+    $workspace = makePlannerWorkspace();
+    $finalJson = fullPlanJsonWith(['changes' => []]);
+
+    [$service] = array_values(makePlanner([
+        plannerResponse('stop', [plannerTextBlock(json_encode($finalJson, JSON_PRETTY_PRINT))]),
+    ]));
+
+    try {
+        $result = $service->planTask(
+            ['workspace_path' => $workspace, 'max_planner_rounds' => 2],
+            ['number' => 1, 'title' => 'no-providercost', 'body' => '', 'html_url' => ''],
+        );
+
+        expect($result->usage)->not->toBeNull();
+        expect($result->usage->inputTokens)->toBe(10);
+        expect($result->usage->outputTokens)->toBe(5);
     } finally {
         deletePlannerDirectory($workspace);
     }

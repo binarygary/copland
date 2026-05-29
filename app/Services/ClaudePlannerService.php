@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Config\GlobalConfig;
 use App\Contracts\LlmClient;
-use App\Data\LlmResponse;
 use App\Data\ModelUsage;
 use App\Data\PlanResult;
 use App\Exceptions\PolicyViolationException;
@@ -69,6 +68,7 @@ class ClaudePlannerService
         $totalOutputTokens = 0;
         $totalCacheWriteTokens = 0;
         $totalCacheReadTokens = 0;
+        $totalProviderCostUsd = null;
 
         // Track normalized paths the planner successfully read this loop so we
         // can drop any `changes` entry for a file the planner never actually
@@ -97,6 +97,10 @@ class ClaudePlannerService
             $totalCacheWriteTokens += $response->usage->cacheWriteTokens;
             $totalCacheReadTokens += $response->usage->cacheReadTokens;
 
+            if ($response->usage->providerCostUsd !== null) {
+                $totalProviderCostUsd = ($totalProviderCostUsd ?? 0.0) + $response->usage->providerCostUsd;
+            }
+
             $messages[] = [
                 'role' => 'assistant',
                 'content' => $response->content,
@@ -116,12 +120,12 @@ class ClaudePlannerService
                     throw new RuntimeException("Planner response missing 'decision' field");
                 }
 
-                $usage = AnthropicCostEstimator::forModel(
-                    $this->model,
+                $usage = $this->buildUsage(
                     $totalInputTokens,
                     $totalOutputTokens,
                     $totalCacheWriteTokens,
                     $totalCacheReadTokens,
+                    $totalProviderCostUsd,
                 );
 
                 $changes = is_array($json['changes'] ?? null) ? $json['changes'] : [];
@@ -295,19 +299,16 @@ class ClaudePlannerService
         return $data;
     }
 
-
-    private function usageFromResponse(LlmResponse $response): ModelUsage
+    // Mirrors ClaudeExecutorService::buildUsage. When any round in the agentic
+    // loop reports a provider-supplied cost, bypass the per-token estimator and
+    // emit ModelUsage carrying that cost directly (relevant for the
+    // claude-code provider where token counts are ignored upstream).
+    private function buildUsage(int $in, int $out, int $cw, int $cr, ?float $providerCost): ModelUsage
     {
-        if ($response->usage->providerCostUsd !== null) {
-            return ModelUsage::fromProviderCost($this->model, $response->usage->providerCostUsd);
+        if ($providerCost !== null) {
+            return ModelUsage::fromProviderCost($this->model, $providerCost);
         }
 
-        return AnthropicCostEstimator::forModel(
-            $this->model,
-            $response->usage->inputTokens,
-            $response->usage->outputTokens,
-            $response->usage->cacheWriteTokens,
-            $response->usage->cacheReadTokens,
-        );
+        return AnthropicCostEstimator::forModel($this->model, $in, $out, $cw, $cr);
     }
 }
