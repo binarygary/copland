@@ -162,7 +162,7 @@ class TaskListService
         $created = $this->formatTimestamp((string) ($issue['created_at'] ?? ''));
 
         return [
-            'id' => '#'.$number,
+            'id' => $slug.'#'.$number,
             'title' => (string) ($issue['title'] ?? ''),
             'repo' => $slug,
             'repo_path' => $repoPath,
