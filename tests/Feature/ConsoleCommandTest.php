@@ -109,6 +109,55 @@ it('refuses to launch and reports missing Godot.app when neither mdfind nor osas
     ]);
 });
 
+it('passes --copland-bin <projectRoot>/copland to the Godot launch args (#24-01 T8)', function () {
+    $commands = [];
+
+    $command = new ConsoleCommand(
+        runner: function (array $command) use (&$commands): array {
+            $commands[] = $command;
+
+            return match (true) {
+                $command === ['mdfind', "kMDItemCFBundleIdentifier == 'org.godotengine.godot'"] => [
+                    'stdout' => '/Applications/Godot.app',
+                    'stderr' => '',
+                    'exitCode' => 0,
+                ],
+                // Match the launch command no matter the exact arg shape — the
+                // assertion below checks for the --copland-bin pair explicitly.
+                $command[0] === 'open' => [
+                    'stdout' => '',
+                    'stderr' => '',
+                    'exitCode' => 0,
+                ],
+                default => throw new RuntimeException('Unexpected command: '.implode(' ', $command)),
+            };
+        },
+        projectRootResolver: fn (): string => '/Users/tester/projects/copland',
+        projectFileChecker: fn (string $path): bool => $path === '/Users/tester/projects/copland/console-godot/project.godot',
+        osFamilyResolver: fn (): string => 'Darwin',
+    );
+    $command->setLaravel($this->app);
+
+    $tester = new CommandTester($command);
+    $exitCode = $tester->execute([]);
+
+    expect($exitCode)->toBe(0);
+
+    // Find the open command and assert the consecutive --copland-bin pair is present.
+    $openCommand = null;
+    foreach ($commands as $captured) {
+        if ($captured[0] === 'open') {
+            $openCommand = $captured;
+            break;
+        }
+    }
+    expect($openCommand)->not->toBeNull();
+
+    $binFlagIdx = array_search('--copland-bin', $openCommand, true);
+    expect($binFlagIdx)->not->toBeFalse();
+    expect($openCommand[$binFlagIdx + 1] ?? null)->toBe('/Users/tester/projects/copland/copland');
+});
+
 it('refuses to launch on non-Darwin platforms with a clear macOS-only message (#12)', function () {
     $commands = [];
 
