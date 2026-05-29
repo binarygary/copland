@@ -180,7 +180,7 @@ class RunOrchestratorService
             $this->pushLog("      Planner decision: {$plan->decision}");
 
             if ($plan->decision === 'decline') {
-                $this->comment($repo, $selectedIssue['number'], "🛑 **Skipped** — the planner declined this issue.\n\n**Reason:** {$plan->declineReason}");
+                $this->comment($repo, $selectedIssue['number'], "🛑 **Skipped** — the planner declined this issue.\n\n**Reason:** ".($plan->declineReason ?? 'no reason given'));
 
                 $result = new RunResult(
                     status: 'skipped',
