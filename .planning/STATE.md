@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Godot Console — Configuration + Operational Surfaces
-status: completed
+status: verifying
 stopped_at: Phase 24 context gathered
-last_updated: "2026-05-29T12:52:35.707Z"
-last_activity: 2026-05-29 -- Phase 23 marked complete
+last_updated: "2026-05-29T13:32:00.179Z"
+last_activity: 2026-05-29
 progress:
   total_phases: 7
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 14
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
+  percent: 29
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-29)
 
 **Core value:** A reliable overnight agent that opens merge-ready PRs without intervention.
-**Current focus:** Phase 23 — Config Read Contract
+**Current focus:** Phase 24 — Config Write — Global Repos List
 
 ## Current Position
 
-Phase: 23 — COMPLETE
+Phase: 24 (Config Write — Global Repos List) — EXECUTING
 Plan: 1 of 1
-Status: Phase 23 complete
-Last activity: 2026-05-29 -- Phase 23 marked complete
+Status: Phase complete — ready for verification
+Last activity: 2026-05-29
 
 ## Performance Metrics
 
@@ -61,6 +61,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Config snapshot v1 schema locked in tests/fixtures/config/show-snapshot.json — Phases 24-29 consume this contract
 - [Phase ?]: Per-repo local_config reads via raw Yaml::parseFile (NOT RepoConfig) so snapshot exposes the YAML as written
 - [Phase ?]: config:show preflight (file-exists / parse / repo-path) runs BEFORE new GlobalConfig so the bootstrap auto-create cannot mask missing-file errors
+- [Phase ?]: Phase 24 P01: YAML mutation strategy = scoped-block replacement via App\Support\YamlBlockEditor (start-of-line regex + Yaml::dump + splice). Comments outside the target block preserved byte-for-byte; in-block comments dropped (documented trade-off D-01). CRLF/LF dominant line ending detected on read and preserved on write.
+- [Phase ?]: Phase 24 P01: copland binary discovery (Main.gd + Config.gd) = --copland-bin cmdline arg → $COPLAND_BIN env var → which copland → empty + error banner. COPLAND_BIN_DEFAULT hardcoded path retired; ConsoleCommand passes --copland-bin to Godot launch args.
+- [Phase ?]: Phase 24 P01: CFG-06 invariant baked into Godot — Config.gd makes ZERO YAML FileAccess calls. All reads via copland config:show --json; all writes via copland config:repos:add/edit/remove. Grep gate in verification confirms.
 
 ### Pending Todos
 
@@ -77,12 +80,13 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-29T12:52:35.698Z
+Last session: 2026-05-29T13:31:32.107Z
 Stopped at: Phase 24 context gathered
-Resume file: .planning/phases/24-config-write-global-repos-list/24-CONTEXT.md
+Resume file: None
 
 ## Performance Metrics
 
 | Phase | Plan | Duration | Notes |
 |-------|------|----------|-------|
 | Phase 23 P01 | 25min | 4 tasks | 5 files |
+| Phase 24 P01 | ~75min | 8 tasks | 13 files |

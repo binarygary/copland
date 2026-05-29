@@ -10,11 +10,11 @@
 ### Config UI
 
 - [x] **CFG-01**: `copland config show --json` emits a structured JSON snapshot of the merged global + per-repo configuration (repos[], asana_token redaction state, per-repo asana fields, per-repo `.copland.yml` overrides, defaults, stage models) that the Godot console can consume without parsing YAML.
-- [ ] **CFG-02**: User can list, add, edit, and remove entries in `~/.copland.yml` `repos[]` (slug + path) from the Godot console.
+- [x] **CFG-02**: User can list, add, edit, and remove entries in `~/.copland.yml` `repos[]` (slug + path) from the Godot console.
 - [ ] **CFG-03**: User can set the global `asana_token` and per-repo `asana_project` / `asana_filters` from the console.
 - [ ] **CFG-04**: User can edit per-repo `.copland.yml` fields (`task_source`, `repo_summary`, `conventions`, llm stage overrides) from the console for any configured repo.
 - [ ] **CFG-05**: User can edit global defaults (`max_files_changed`, `max_lines_changed`, `base_branch`) and stage models (selector / planner / executor) from the console.
-- [ ] **CFG-06**: All write paths from the console invoke `copland config <subcommand>` flags; PHP owns YAML parsing, validation, and comment preservation; Godot never writes YAML directly.
+- [x] **CFG-06**: All write paths from the console invoke `copland config <subcommand>` flags; PHP owns YAML parsing, validation, and comment preservation; Godot never writes YAML directly.
 
 ### Run Drill-in
 

@@ -68,7 +68,7 @@
 ### Phases
 
 - [x] **Phase 23: Config Read Contract** — `copland config show --json` emits the merged global + per-repo configuration snapshot the Godot console reads from (CFG-01) (completed 2026-05-29)
-- [ ] **Phase 24: Config Write — Global Repos List** — `copland config repos {add,edit,remove}` subcommands + Godot screen for managing `~/.copland.yml` `repos[]` entries (CFG-02, CFG-06)
+- [x] **Phase 24: Config Write — Global Repos List** — `copland config repos {add,edit,remove}` subcommands + Godot screen for managing `~/.copland.yml` `repos[]` entries (CFG-02, CFG-06) (completed 2026-05-29)
 - [ ] **Phase 25: Config Write — Per-Repo `.copland.yml`** — `copland config repo set` subcommand + Godot per-repo editor for `task_source`, `repo_summary`, `conventions`, and llm stage overrides (CFG-04, CFG-06)
 - [ ] **Phase 26: Config Write — Asana Fields + Defaults & Models** — Two grouped config surfaces: global `asana_token` + per-repo Asana fields, and global defaults + stage models, each with CLI subcommand + Godot screen (CFG-03, CFG-05, CFG-06)
 - [ ] **Phase 27: Run Drill-In Selection + Per-Run View** — Per-run view renders run id/status/prompts/tool calls, then ↑/↓ row selection, then ENTER/ESC navigation in the task drill-in (DRILL-01, DRILL-02, DRILL-03)
@@ -113,7 +113,7 @@ Plans:
 
 Plans:
 
-- [ ] 24-01-PLAN.md — Ship YamlBlockEditor helper + config:repos:{add,edit,remove} subcommands + Godot Config hub scene with live Repos sub-view + retire COPLAND_BIN_DEFAULT
+- [x] 24-01-PLAN.md — Ship YamlBlockEditor helper + config:repos:{add,edit,remove} subcommands + Godot Config hub scene with live Repos sub-view + retire COPLAND_BIN_DEFAULT
 
 #### Phase 25: Config Write — Per-Repo `.copland.yml`
 
@@ -200,7 +200,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 23. Config Read Contract | 1/1 | Complete   | 2026-05-29 |
-| 24. Config Write — Global Repos List | 0/1 | Not started | - |
+| 24. Config Write — Global Repos List | 1/1 | Complete   | 2026-05-29 |
 | 25. Config Write — Per-Repo `.copland.yml` | 0/0 | Not started | - |
 | 26. Config Write — Asana Fields + Defaults & Models | 0/0 | Not started | - |
 | 27. Run Drill-In Selection + Per-Run View | 0/0 | Not started | - |
