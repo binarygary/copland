@@ -153,6 +153,23 @@ class CodexRunnerTest extends TestCase
         $runner->runStage(prompt: 'p', jsonSchema: '{}', sandbox: 'read-only', cwd: '/tmp');
     }
 
+    public function test_run_stage_surfaces_stream_error_over_stderr_noise(): void
+    {
+        // The real failure (invalid_json_schema) is a turn.failed event on
+        // stdout; stderr carries only unrelated MCP/deprecation noise.
+        $stdout = implode("\n", [
+            '{"type":"turn.started"}',
+            '{"type":"turn.failed","error":{"message":"invalid_json_schema: additionalProperties required"}}',
+        ]);
+        $captured = [];
+        $runner = new CodexRunner('codex', $this->captureFactory($captured, '', $stdout, 1, 'rmcp Asana MCP auth noise'));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/invalid_json_schema/');
+
+        $runner->runStage(prompt: 'p', jsonSchema: '{}', sandbox: 'read-only', cwd: '/tmp');
+    }
+
     public function test_run_stage_throws_when_no_final_message_written(): void
     {
         // exit 0 but no -o file content (finalMessage '')

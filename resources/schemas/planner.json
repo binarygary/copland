@@ -1,5 +1,6 @@
 {
   "type": "object",
+  "additionalProperties": false,
   "properties": {
     "decision": {
       "type": "string"
@@ -55,5 +56,21 @@
       "type": ["string", "null"]
     }
   },
-  "required": ["decision"]
+  "required": [
+    "decision",
+    "branch_name",
+    "files_to_read",
+    "files_to_change",
+    "blocked_write_paths",
+    "steps",
+    "commands_to_run",
+    "tests_to_update",
+    "success_criteria",
+    "guardrails",
+    "pr_title",
+    "pr_body",
+    "max_files_changed",
+    "max_lines_changed",
+    "decline_reason"
+  ]
 }
