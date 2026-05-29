@@ -66,6 +66,8 @@ it('serves cached issues and overlays run-store state without hitting GitHub', f
         mkdir($taskDir.'/runs/run-1', 0700, true);
         file_put_contents($taskDir.'/task.md', "---\nid: '42'\ntitle: 'Wire footer to live usage'\nrepo_slug: '{$slug}'\ncreated_at: '2026-05-14 21:08'\n---\n\nbody\n");
         file_put_contents($taskDir.'/status.md', "state: 'executing'\nupdated_at: '2026-05-16 09:30'\n");
+        // Latest run's outcome carries a failure reason → must surface on the row.
+        file_put_contents($taskDir.'/runs/run-1/outcome.md', "---\nrun_id: 'run-1'\nstatus: 'crashed'\nfailure_reason: 'claude-code: process exited with status 1'\n---\n");
 
         $service = new TaskListService(
             config: new GlobalConfig,
@@ -88,6 +90,7 @@ it('serves cached issues and overlays run-store state without hitting GitHub', f
         expect($byId['#42']['runs_count'])->toBe(1);
         expect($byId['#42']['task_dir'])->toBe($taskDir);
         expect($byId['#42']['updated'])->toBe('2026-05-16 09:30');
+        expect($byId['#42']['failure_reason'])->toBe('claude-code: process exited with status 1');
 
         // Rejected issue: blocked, with the prefilter reason as the summary.
         expect($byId['#99']['state'])->toBe('blocked');

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Contracts\TaskSource;
 use App\Data\ModelUsage;
+use App\Data\PlanResult;
 use App\Data\RunResult;
 use App\Support\AnthropicCostEstimator;
 use App\Support\PlanArtifactStore;
@@ -165,11 +166,13 @@ class RunOrchestratorService
             $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'new');
             $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'selected');
             $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'selected');
+            $this->comment($repo, $selectedIssue['number'], '🔄 **Selected** for an automated run.');
 
             // Step 3: Claude plan
             $this->pushLog('[3/8] Running Claude planner');
             $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'planning');
             $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'planning');
+            $this->comment($repo, $selectedIssue['number'], '🔄 **Planning** the implementation…');
             $plan = $this->planner->planTask($repoProfile, $selectedIssue);
             if ($snapshot !== null) {
                 $snapshot->plannerUsage = $plan->usage;
@@ -177,6 +180,8 @@ class RunOrchestratorService
             $this->pushLog("      Planner decision: {$plan->decision}");
 
             if ($plan->decision === 'decline') {
+                $this->comment($repo, $selectedIssue['number'], "🛑 **Skipped** — the planner declined this issue.\n\n**Reason:** ".($plan->declineReason ?? 'no reason given'));
+
                 $result = new RunResult(
                     status: 'skipped',
                     prUrl: null,
@@ -203,6 +208,7 @@ class RunOrchestratorService
             if (! empty($validationErrors)) {
                 $reason = implode('; ', $validationErrors);
                 $this->pushLog("      Plan validation failed: {$reason}");
+                $this->comment($repo, $selectedIssue['number'], "🛑 **Blocked** — the plan failed validation.\n\n**Reason:** {$reason}");
 
                 $result = new RunResult(
                     status: 'failed',
@@ -224,6 +230,7 @@ class RunOrchestratorService
             $this->pushLog('      Plan validated OK');
             $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'planned');
             $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'planned');
+            $this->comment($repo, $selectedIssue['number'], $this->formatPlanComment($plan));
 
             // Step 5: Create worktree
             $repoPath = $repoProfile['repo_path'] ?? getcwd();
@@ -237,6 +244,7 @@ class RunOrchestratorService
             $this->pushLog('[6/8] Running Claude executor');
             $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'executing');
             $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'executing');
+            $this->comment($repo, $selectedIssue['number'], '🔄 **Executing** the plan…');
             $executionResult = $this->executor->executeWithRepoProfile(
                 $workspacePath,
                 $plan,
@@ -249,11 +257,7 @@ class RunOrchestratorService
                 : "      Execution failed: {$executionResult->summary}");
 
             if (! $executionResult->success) {
-                $this->taskSource->addComment(
-                    $repo,
-                    $selectedIssue['number'],
-                    "❌ Agent run failed.\n\n**Reason:** {$executionResult->summary}"
-                );
+                $this->comment($repo, $selectedIssue['number'], "❌ **Failed** during execution.\n\n**Reason:** {$executionResult->summary}");
 
                 $result = new RunResult(
                     status: 'failed',
@@ -278,6 +282,7 @@ class RunOrchestratorService
             $this->pushLog('[7/8] Running verification');
             $this->taskWriter?->writeStatus($writerRepoSlug, $selectedIssue['number'], 'verifying');
             $this->taskWriter?->writeRunStatus($writerRepoSlug, $selectedIssue['number'], $runId, 'verifying');
+            $this->comment($repo, $selectedIssue['number'], '🔄 **Verifying** the changes…');
             $verificationResult = $this->verifier->verify($repoProfile, $workspacePath, $plan, $executionResult);
 
             if (! $verificationResult->passed) {
@@ -285,11 +290,7 @@ class RunOrchestratorService
                 $this->pushLog("      Verification failed: {$reason}");
 
                 // Step 8: Comment failure on issue
-                $this->taskSource->addComment(
-                    $repo,
-                    $selectedIssue['number'],
-                    "❌ Agent run failed.\n\n**Reason:** {$reason}"
-                );
+                $this->comment($repo, $selectedIssue['number'], "❌ **Failed** verification.\n\n**Reason:** {$reason}");
 
                 $result = new RunResult(
                     status: 'failed',
@@ -337,10 +338,10 @@ class RunOrchestratorService
             }
 
             // Step 12: Comment success on issue
-            $this->taskSource->addComment(
+            $this->comment(
                 $repo,
                 $selectedIssue['number'],
-                "✅ Agent run complete.\n\n**PR:** {$prUrl}\n**Branch:** `{$plan->branchName}`\n\n{$executionResult->summary}"
+                "✅ **PR opened** — draft ready for review.\n\n**PR:** {$prUrl}\n**Branch:** `{$plan->branchName}`\n\n{$executionResult->summary}"
             );
 
             $result = new RunResult(
@@ -364,6 +365,13 @@ class RunOrchestratorService
         } catch (Throwable $e) {
             $this->pushLog("      Run crashed: {$e->getMessage()}");
             $caught = $e;
+
+            // The crash path was previously silent on the issue — this is what
+            // left a blocked task with no on-ticket explanation. Comment the
+            // reason before re-throwing (only once we have an issue to comment on).
+            if ($selectedIssue !== null) {
+                $this->comment($repo, $selectedIssue['number'], "🛑 **Blocked** — the run crashed.\n\n**Reason:** {$e->getMessage()}");
+            }
 
             throw $e;
         } finally {
@@ -525,5 +533,51 @@ class RunOrchestratorService
         if ($this->progressCallback !== null) {
             ($this->progressCallback)($entry);
         }
+    }
+
+    /**
+     * Post a progress comment to the task's issue — best-effort. A commenting
+     * failure (rate limit, transient network) must never break or mask the run,
+     * so all failures are swallowed to the run log.
+     */
+    private function comment(string $repo, int|string $issueNumber, string $body): void
+    {
+        try {
+            $this->taskSource->addComment($repo, $issueNumber, $body);
+        } catch (Throwable $e) {
+            $this->pushLog("      Warning: issue comment failed: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Render the plan as a Markdown comment body — the key asset to attach to the
+     * issue when a run reaches the 'planned' state.
+     */
+    private function formatPlanComment(PlanResult $plan): string
+    {
+        $lines = ["📋 **Plan ready** — branch `{$plan->branchName}`"];
+
+        if ($plan->filesToChange !== []) {
+            $lines[] = '';
+            $lines[] = '**Files to change:**';
+            foreach ($plan->filesToChange as $file) {
+                $lines[] = "- `{$file}`";
+            }
+        }
+
+        if ($plan->steps !== []) {
+            $lines[] = '';
+            $lines[] = '**Steps:**';
+            foreach ($plan->steps as $i => $step) {
+                $lines[] = ($i + 1).". {$step}";
+            }
+        }
+
+        if ($plan->commandsToRun !== []) {
+            $lines[] = '';
+            $lines[] = '**Commands:** '.implode(', ', array_map(fn ($c) => "`{$c}`", $plan->commandsToRun));
+        }
+
+        return implode("\n", $lines);
     }
 }
