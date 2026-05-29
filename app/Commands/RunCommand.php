@@ -35,7 +35,8 @@ use Throwable;
 
 class RunCommand extends Command implements SignalableCommandInterface
 {
-    protected $signature = 'run {repo? : GitHub repo in owner/repo format}';
+    protected $signature = 'run {repo? : GitHub repo in owner/repo format}
+        {--issue= : Run this specific issue number, bypassing the Claude selector}';
 
     protected $description = 'Run the full overnight agent flow for a repo';
 
@@ -56,15 +57,36 @@ class RunCommand extends Command implements SignalableCommandInterface
         $this->snapshot = new RunProgressSnapshot;
         $globalConfig = $this->globalConfig ?? new GlobalConfig;
         $requestedRepo = $this->argument('repo');
+        $targetIssue = $this->normalizeIssueOption($this->option('issue'));
         $originalPath = getcwd() ?: '.';
         $repoRuns = [];
+
+        // A targeted run acts on one specific issue, so it needs an unambiguous
+        // repo — running "this issue" across every configured repo is meaningless.
+        if ($targetIssue !== null && ! (is_string($requestedRepo) && trim($requestedRepo) !== '')) {
+            $this->error('The --issue option requires an explicit repo argument (e.g. `run owner/repo --issue 42`).');
+
+            return self::FAILURE;
+        }
 
         $this->line($progress->step('Resolve repository targets'));
 
         if (is_string($requestedRepo) && trim($requestedRepo) !== '') {
-            $repo = (new CurrentRepoGuardService)->resolve($requestedRepo);
-            $repoRuns[] = ['slug' => $repo, 'path' => $originalPath];
-            $this->line($progress->detail("Using repo {$repo}"));
+            $configuredMatch = $this->findConfiguredRepo($globalConfig, trim($requestedRepo));
+
+            if ($configuredMatch !== null) {
+                // Configured repos carry an explicit path, so a targeted run works
+                // from any working directory — e.g. launched detached by the Godot
+                // console, where cwd is not the repo. This also bypasses the
+                // current-checkout guard, which is correct: only repos the user has
+                // configured can be targeted this way.
+                $repoRuns[] = $configuredMatch;
+                $this->line($progress->detail("Using configured repo {$configuredMatch['slug']}"));
+            } else {
+                $repo = (new CurrentRepoGuardService)->resolve($requestedRepo);
+                $repoRuns[] = ['slug' => $repo, 'path' => $originalPath];
+                $this->line($progress->detail("Using repo {$repo}"));
+            }
         } else {
             $configuredRepos = $globalConfig->configuredRepos();
 
@@ -90,7 +112,7 @@ class RunCommand extends Command implements SignalableCommandInterface
             $this->line(sprintf('[%d/%d] %s (%s)', $index + 1, count($repoRuns), $slug, $path));
 
             try {
-                $results[$slug] = $this->executeRepo($slug, $path, $globalConfig, $this->snapshot);
+                $results[$slug] = $this->executeRepo($slug, $path, $globalConfig, $this->snapshot, $targetIssue);
             } catch (Throwable $throwable) {
                 $this->error("❌ Failed — {$throwable->getMessage()}");
                 $results[$slug] = $this->failedResultFromException($throwable);
@@ -132,12 +154,51 @@ class RunCommand extends Command implements SignalableCommandInterface
         string $path,
         GlobalConfig $globalConfig,
         RunProgressSnapshot $snapshot,
+        ?string $targetIssue = null,
     ): RunResult {
         if ($this->repoRunner !== null) {
-            return ($this->repoRunner)($repo, $path, $globalConfig, $snapshot);
+            return ($this->repoRunner)($repo, $path, $globalConfig, $snapshot, $targetIssue);
         }
 
-        return $this->runRepo($repo, $path, $globalConfig, $snapshot);
+        return $this->runRepo($repo, $path, $globalConfig, $snapshot, $targetIssue);
+    }
+
+    /**
+     * Find a configured repo entry (slug + path) matching the requested slug,
+     * or null when the repo isn't configured. Swallows configuredRepos()
+     * failures so the caller falls back to the current-checkout guard.
+     *
+     * @return array{slug: string, path: string}|null
+     */
+    private function findConfiguredRepo(GlobalConfig $globalConfig, string $slug): ?array
+    {
+        try {
+            foreach ($globalConfig->configuredRepos() as $entry) {
+                if (strcasecmp((string) ($entry['slug'] ?? ''), $slug) === 0) {
+                    return $entry;
+                }
+            }
+        } catch (Throwable) {
+            // No usable configured-repo list — caller falls back to the guard.
+        }
+
+        return null;
+    }
+
+    /**
+     * Normalize the --issue option to a bare numeric string, or null when absent.
+     * Accepts "#42" or "42"; rejects anything non-numeric so a typo can't
+     * silently fall through to a normal selector run.
+     */
+    private function normalizeIssueOption(mixed $raw): ?string
+    {
+        if (! is_string($raw)) {
+            return null;
+        }
+
+        $trimmed = ltrim(trim($raw), '#');
+
+        return ctype_digit($trimmed) && $trimmed !== '' ? $trimmed : null;
     }
 
     public function getSubscribedSignals(): array
@@ -216,6 +277,7 @@ class RunCommand extends Command implements SignalableCommandInterface
         string $path,
         GlobalConfig $globalConfig,
         RunProgressSnapshot $snapshot,
+        ?string $targetIssue = null,
     ): RunResult {
         $originalPath = getcwd() ?: $path;
 
@@ -319,7 +381,7 @@ class RunCommand extends Command implements SignalableCommandInterface
                 taskWriter: new TaskDirectoryWriterService,
             );
 
-            $result = $orchestrator->run($repo, $repoProfile, fn (string $entry) => $this->line($entry), $snapshot);
+            $result = $orchestrator->run($repo, $repoProfile, fn (string $entry) => $this->line($entry), $snapshot, $targetIssue);
 
             match ($result->status) {
                 'succeeded' => $this->info("✅ Succeeded — PR: {$result->prUrl}"),

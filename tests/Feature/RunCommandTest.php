@@ -37,6 +37,74 @@ it('formats total usage summaries with cache token details', function () {
     expect($lines)->toContain('  - Total: 5,200 input (+800 write, 2,500 read), 1,000 output, $0.0292 est.');
 });
 
+it('rejects --issue without an explicit repo argument', function () {
+    $called = false;
+
+    $command = new RunCommand(
+        globalConfig: new class extends GlobalConfig
+        {
+            public function __construct() {}
+
+            public function configuredRepos(): array
+            {
+                return [];
+            }
+        },
+        repoRunner: function () use (&$called): RunResult {
+            $called = true;
+
+            throw new RuntimeException('should not run');
+        },
+    );
+    $command->setLaravel($this->app);
+
+    $tester = new CommandTester($command);
+    $exitCode = $tester->execute(['--issue' => '42']);
+
+    expect($exitCode)->toBe(1);
+    expect($called)->toBeFalse();
+    expect($tester->getDisplay())->toContain('--issue option requires an explicit repo');
+});
+
+it('passes the normalized target issue through to the run for a configured repo', function () {
+    $capturedIssue = 'unset';
+
+    $command = new RunCommand(
+        globalConfig: new class extends GlobalConfig
+        {
+            public function __construct() {}
+
+            public function configuredRepos(): array
+            {
+                return [['slug' => 'acme/repo', 'path' => '/tmp/acme-repo']];
+            }
+        },
+        repoRunner: function (string $repo, string $path, $gc, $snap, ?string $targetIssue) use (&$capturedIssue): RunResult {
+            $capturedIssue = $targetIssue;
+
+            return new RunResult(
+                status: 'succeeded',
+                prUrl: 'https://example.test/pr/9',
+                prNumber: 9,
+                selectedIssueTitle: 'Targeted',
+                selectedTaskId: 42,
+                failureReason: null,
+                log: [],
+                startedAt: '2026-04-03T20:00:00+00:00',
+                finishedAt: '2026-04-03T20:01:00+00:00',
+            );
+        },
+    );
+    $command->setLaravel($this->app);
+
+    $tester = new CommandTester($command);
+    // Leading '#' must be normalized away to a bare number.
+    $exitCode = $tester->execute(['repo' => 'acme/repo', '--issue' => '#42']);
+
+    expect($exitCode)->toBe(0);
+    expect($capturedIssue)->toBe('42');
+});
+
 it('logs pre-orchestrator repo failures and continues to later repos', function () {
     $executedRepos = [];
     $loggedPayloads = [];
