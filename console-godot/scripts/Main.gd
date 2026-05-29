@@ -165,11 +165,15 @@ const REFRESH_INTERVAL := 2.0
 
 # Operations log + async CLI spawn
 #
-# Path resolution order: $COPLAND_BIN env var → COPLAND_BIN_DEFAULT → "copland" on PATH.
+# Path resolution order:
+#   1. --copland-bin cmdline arg (passed by `copland console`)
+#   2. $COPLAND_BIN env var (developer escape hatch for `godot --editor` launches)
+#   3. `which copland` on PATH
+#   4. empty string → startup error banner in the ops log; no thread spawn
+#
 # Spawn runs on a worker Thread so `copland run`/`plan` (which can take minutes)
 # don't freeze the UI. Main polls the thread in _process and surfaces output
 # when the worker finishes.
-const COPLAND_BIN_DEFAULT := "/Users/garykovar/projects/codeable/copland/copland"
 const MAX_OPS_LOG_LINES := 6
 var copland_bin: String = ""
 var ops_log_panel: PanelContainer
@@ -408,6 +412,9 @@ func _input(event: InputEvent) -> void:
             get_viewport().set_input_as_handled()
         KEY_E:
             _action_edit_notes()
+            get_viewport().set_input_as_handled()
+        KEY_C:
+            get_tree().change_scene_to_file("res://scenes/Config.tscn")
             get_viewport().set_input_as_handled()
 
 
@@ -1386,6 +1393,7 @@ func _set_footer_clusters(mode: String) -> void:
             {"label": "NAVIGATION", "commands": [["↑ ↓", "SELECT"], ["TAB", "CYCLE PANE"]]},
             {"label": "ACTION",     "commands": [["ENTER", "DRILL IN"], ["ESC", "BACK"]]},
             {"label": "CREATE",     "commands": [["A", "ADD REPO"]]},
+            {"label": "CONFIG",     "commands": [["C", "CONFIG"]]},
             {"label": "UTILITY",    "commands": [["S", "STATUS"]]},
         ]
     for i in clusters.size():
@@ -1468,15 +1476,30 @@ func _render_ops_log() -> void:
         ops_log_lines_box.add_child(lbl)
 
 
-# Resolve which copland binary to invoke. Env var > hardcoded default >
-# PATH fallback. Called once at startup, cached in copland_bin.
+# Resolve which copland binary to invoke. Called once at startup, cached in copland_bin.
+# Order: --copland-bin cmdline arg (from `copland console`) → $COPLAND_BIN env var
+# → `which copland` on PATH → empty (caller surfaces error in the ops log).
+#
+# Duplicated in Config.gd::_resolve_copland_bin — kept inline rather than
+# autoload-extracted per Phase 24 CONTEXT.md D-02 (defer Theme/CoplandBin
+# autoloads until shared style emerges).
 func _resolve_copland_bin() -> String:
+    var args := OS.get_cmdline_args()
+    for i in args.size():
+        if args[i] == "--copland-bin" and i + 1 < args.size():
+            var bin: String = args[i + 1]
+            if FileAccess.file_exists(bin):
+                return bin
     var env := OS.get_environment("COPLAND_BIN")
     if env != "" and FileAccess.file_exists(env):
         return env
-    if FileAccess.file_exists(COPLAND_BIN_DEFAULT):
-        return COPLAND_BIN_DEFAULT
-    return "copland"
+    var probe := []
+    var rc := OS.execute("which", ["copland"], probe)
+    if rc == 0 and not probe.is_empty():
+        var path: String = String(probe[0]).strip_edges()
+        if path != "" and FileAccess.file_exists(path):
+            return path
+    return ""
 
 
 # Async spawn. Returns immediately. The worker thread runs OS.execute()
@@ -1488,6 +1511,11 @@ func _spawn_copland(label: String, args: PackedStringArray) -> void:
         return
     if copland_bin == "":
         copland_bin = _resolve_copland_bin()
+    if copland_bin == "":
+        # Resolution exhausted all four options. Surface a clear error and abort
+        # rather than crashing on the first OS.execute call.
+        _append_ops_log("error: copland binary not found — pass --copland-bin, set $COPLAND_BIN, or add copland to PATH", true)
+        return
     _append_ops_log("$ %s %s" % [copland_bin.get_file(), " ".join(args)], true)
     ops_thread_label = label
     ops_thread = Thread.new()
