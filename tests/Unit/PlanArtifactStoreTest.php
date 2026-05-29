@@ -41,7 +41,45 @@ it('writes the latest plan artifact under the global copland runs directory', fu
     expect($json['issue']['number'])->toBe(193);
     expect($json['plan']['branch_name'])->toBe('agent/issue-193');
     expect($json['plan']['blocked_write_paths'])->toBe(['resources/js/blocked.js']);
+    expect($json['plan'])->toHaveKey('changes');
+    expect($json['plan']['changes'])->toBe([]);
     expect($json['validation_errors'])->toBe(['command not allowed']);
+
+    $_SERVER['HOME'] = $originalHome;
+});
+
+it('serializes the changes array in the saved plan artifact', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $home = sys_get_temp_dir().'/copland-plan-artifacts-changes-'.uniqid();
+    mkdir($home, 0755, true);
+    $_SERVER['HOME'] = $home;
+
+    $changes = [
+        ['file' => 'src/x.txt', 'old' => 'foo', 'new' => 'bar', 'reason' => 'rename'],
+    ];
+
+    $store = new PlanArtifactStore;
+    $path = $store->save('owner/repo', ['number' => 1, 'title' => 't', 'html_url' => ''], new PlanResult(
+        decision: 'plan',
+        branchName: 'agent/issue-1',
+        filesToRead: ['src/x.txt'],
+        filesToChange: ['src/x.txt'],
+        blockedWritePaths: [],
+        steps: ['step'],
+        commandsToRun: [],
+        testsToUpdate: [],
+        successCriteria: [],
+        guardrails: [],
+        prTitle: 'T',
+        prBody: 'B',
+        maxFilesChanged: 3,
+        maxLinesChanged: 250,
+        declineReason: null,
+        changes: $changes,
+    ));
+
+    $json = json_decode((string) file_get_contents($path), true);
+    expect($json['plan']['changes'])->toBe($changes);
 
     $_SERVER['HOME'] = $originalHome;
 });

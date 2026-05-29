@@ -4,8 +4,8 @@ milestone: v2.0
 milestone_name: Godot Console
 status: complete
 stopped_at: Phase 22 Plan 02 complete — CONS-02 + CONS-03 satisfied; v2.0 milestone doc-complete
-last_updated: "2026-05-27T23:59:00Z"
-last_activity: 2026-05-27
+last_updated: "2026-05-28T11:30:00Z"
+last_activity: 2026-05-28
 progress:
   total_phases: 4
   completed_phases: 4
@@ -62,6 +62,11 @@ Recent decisions affecting current work:
 ### Pending Todos
 
 None.
+
+### Recent Quick Tasks
+
+- 260528-tpm: Planner's `changes[]` filter now normalizes `$change['file']` before looking it up in `$readPaths`, so equivalent path spellings (`src/x` vs `./src/x`) match. Bug surfaced in PR #16 round-2 review (Copilot). See `.planning/quick/260528-tpm-fix-planner-normalization-providercostus/SUMMARY.md`.
+- 260528-a6b: Planner now reads files and emits exact `changes: [{file, old, new, reason}]` diffs so small Ollama executor models can apply edits via `replace_in_file` without synthesizing text. See `.planning/quick/260528-a6b-extend-planner-to-produce-executor-ready/260528-a6b-SUMMARY.md`.
 
 ### Blockers/Concerns
 

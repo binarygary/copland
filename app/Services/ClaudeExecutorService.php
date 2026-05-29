@@ -62,6 +62,7 @@ class ClaudeExecutorService
             'tests_to_update' => $plan->testsToUpdate,
             'success_criteria' => $plan->successCriteria,
             'guardrails' => $plan->guardrails,
+            'changes' => $plan->changes,
         ], JSON_PRETTY_PRINT);
 
         $tools = $this->buildTools();

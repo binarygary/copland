@@ -96,7 +96,49 @@ it('captures blocked write policy violations in the failed execution result', fu
     }
 });
 
+it('surfaces plan->changes inside the executor contract message', function () {
+    $workspace = makeWorkspace();
+    $plan = makePlan(
+        filesToChange: ['src/file.txt'],
+        changes: [[
+            'file' => 'src/file.txt',
+            'old' => 'foo',
+            'new' => 'bar',
+            'reason' => 'rename foo to bar',
+        ]],
+    );
+
+    $built = makeExecutorAndFake([
+        fakeResponse(stopReason: 'stop', content: [textBlock('done')]),
+    ]);
+
+    try {
+        $result = $built['service']->executeWithRepoProfile($workspace, $plan, ['max_executor_rounds' => 1]);
+
+        expect($result->success)->toBeTrue();
+        expect($built['messages']->captured)->not->toBeEmpty();
+
+        $firstCall = $built['messages']->captured[0];
+        $sentMessages = $firstCall['messages'];
+        $firstUserContent = $sentMessages[0]['content'];
+
+        expect($firstUserContent)->toContain('"changes"');
+        // json_encode escapes forward slashes by default ("src\/file.txt").
+        expect($firstUserContent)->toContain('"file": "src\/file.txt"');
+        expect($firstUserContent)->toContain('"old": "foo"');
+        expect($firstUserContent)->toContain('"new": "bar"');
+        expect($firstUserContent)->toContain('"reason": "rename foo to bar"');
+    } finally {
+        deleteDirectory($workspace);
+    }
+});
+
 function makeExecutor(array $responses): ClaudeExecutorService
+{
+    return makeExecutorAndFake($responses)['service'];
+}
+
+function makeExecutorAndFake(array $responses): array
 {
     $config = new class extends GlobalConfig
     {
@@ -110,10 +152,14 @@ function makeExecutor(array $responses): ClaudeExecutorService
 
     $messages = new class($responses)
     {
+        public array $captured = [];
+
         public function __construct(private array $responses) {}
 
         public function create(...$params): object
         {
+            $this->captured[] = $params;
+
             if ($this->responses === []) {
                 throw new \RuntimeException('No fake executor responses remaining');
             }
@@ -127,11 +173,14 @@ function makeExecutor(array $responses): ClaudeExecutorService
         public function __construct(public object $messages) {}
     };
 
-    return new ClaudeExecutorService(
-        config: $config,
-        apiClient: new AnthropicApiClient($client, maxAttempts: 1),
-        systemPrompt: 'executor test prompt',
-    );
+    return [
+        'service' => new ClaudeExecutorService(
+            config: $config,
+            apiClient: new AnthropicApiClient($client, maxAttempts: 1),
+            systemPrompt: 'executor test prompt',
+        ),
+        'messages' => $messages,
+    ];
 }
 
 function makePlan(
@@ -139,6 +188,7 @@ function makePlan(
     array $filesToChange = [],
     array $blockedWritePaths = [],
     array $commandsToRun = [],
+    array $changes = [],
 ): PlanResult {
     return new PlanResult(
         decision: 'accept',
@@ -156,6 +206,7 @@ function makePlan(
         maxFilesChanged: 3,
         maxLinesChanged: 250,
         declineReason: null,
+        changes: $changes,
     );
 }
 

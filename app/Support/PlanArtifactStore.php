@@ -39,6 +39,7 @@ class PlanArtifactStore
                 'max_files_changed' => $plan->maxFilesChanged,
                 'max_lines_changed' => $plan->maxLinesChanged,
                 'decline_reason' => $plan->declineReason,
+                'changes' => $plan->changes,
             ],
             'validation_errors' => array_values($validationErrors),
         ];

@@ -65,6 +65,40 @@ class PlanValidatorService
             $errors[] = 'pr_body is missing';
         }
 
+        foreach ($plan->changes as $index => $change) {
+            if (! is_array($change)) {
+                $errors[] = "changes[{$index}] is not an object";
+
+                continue;
+            }
+
+            if (! isset($change['file']) || ! is_string($change['file']) || $change['file'] === '') {
+                $errors[] = "changes[{$index}] is missing 'file'";
+            } elseif (! in_array($change['file'], $plan->filesToChange, true)) {
+                $errors[] = "changes[{$index}] file '{$change['file']}' not in files_to_change";
+            }
+
+            if (! array_key_exists('old', $change) || ! is_string($change['old']) || $change['old'] === '') {
+                $errors[] = "changes[{$index}] has empty 'old' text";
+            }
+
+            if (! array_key_exists('new', $change) || ! is_string($change['new'])) {
+                $errors[] = "changes[{$index}] is missing 'new' text";
+            }
+
+            if (! isset($change['reason']) || ! is_string($change['reason']) || $change['reason'] === '') {
+                $errors[] = "changes[{$index}] is missing 'reason'";
+            }
+
+            if (
+                array_key_exists('old', $change) && is_string($change['old']) && $change['old'] !== ''
+                && array_key_exists('new', $change) && is_string($change['new'])
+                && $change['old'] === $change['new']
+            ) {
+                $errors[] = "changes[{$index}] has identical 'old' and 'new' (no-op)";
+            }
+        }
+
         return $errors;
     }
 }

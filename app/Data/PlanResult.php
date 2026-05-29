@@ -20,6 +20,7 @@ class PlanResult
         public readonly int $maxFilesChanged,
         public readonly int $maxLinesChanged,
         public readonly ?string $declineReason,
+        public readonly array $changes = [],
         public readonly ?ModelUsage $usage = null,
     ) {}
 }
