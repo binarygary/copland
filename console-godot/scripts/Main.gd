@@ -2396,7 +2396,7 @@ class HeaderCrown extends Control:
 
         var cx: float = w / 2.0
         var title_y: float = h * 0.60
-        var sub_y: float = title_y + 22
+        var sub_y: float = title_y + 34
 
         # Soft shadow under title — light, restrained
         draw_string(font, Vector2(cx - t_dims.x / 2.0 + 1, title_y + 2),
