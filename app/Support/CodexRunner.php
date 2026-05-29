@@ -163,7 +163,11 @@ class CodexRunner
      */
     private function extractStreamError(string $stdout): ?string
     {
-        $found = null;
+        // A turn.failed message is the authoritative failure; a generic `error`
+        // event (e.g. a trailing deprecation) must never override it, regardless
+        // of order. Track each kind separately and prefer turn.failed.
+        $turnFailed = null;
+        $genericError = null;
 
         foreach (explode("\n", $stdout) as $line) {
             $line = trim($line);
@@ -177,13 +181,13 @@ class CodexRunner
 
             $type = $event['type'] ?? '';
             if ($type === 'turn.failed' && isset($event['error']['message'])) {
-                $found = (string) $event['error']['message'];
+                $turnFailed = (string) $event['error']['message'];
             } elseif ($type === 'error' && isset($event['message'])) {
-                $found = (string) $event['message'];
+                $genericError = (string) $event['message'];
             }
         }
 
-        return $found;
+        return $turnFailed ?? $genericError;
     }
 
     private function tempFile(string $kind): string
