@@ -54,7 +54,18 @@ class ConsoleCommand extends Command
         }
 
         // Launch — fire-and-forget via macOS `open` (D-04, D-06: no `-W`).
-        $result = $this->runShellCommand(['open', '-a', 'Godot', '--args', '--path', $godotProjectDir]);
+        //
+        // --copland-bin is passed so the Godot side (Main.gd / Config.gd) can
+        // resolve the binary via OS.get_cmdline_args() without falling back to
+        // $COPLAND_BIN or `which copland`. v2.1 ships from the dev repo, so
+        // base_path() . '/copland' always exists; production-install fallback
+        // (`which copland` inside ConsoleCommand) is deferred (Phase 24 T8).
+        $coplandBinPath = $projectRoot.'/copland';
+        $result = $this->runShellCommand([
+            'open', '-a', 'Godot', '--args',
+            '--path', $godotProjectDir,
+            '--copland-bin', $coplandBinPath,
+        ]);
 
         if ($result['exitCode'] !== 0) {
             $this->error('open -a Godot failed: '.trim($result['stderr']));

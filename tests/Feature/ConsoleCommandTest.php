@@ -16,7 +16,7 @@ it('launches Godot via open when preflights pass', function () {
                     'stderr' => '',
                     'exitCode' => 0,
                 ],
-                ['open', '-a', 'Godot', '--args', '--path', '/Users/tester/projects/copland/console-godot'] => [
+                ['open', '-a', 'Godot', '--args', '--path', '/Users/tester/projects/copland/console-godot', '--copland-bin', '/Users/tester/projects/copland/copland'] => [
                     'stdout' => '',
                     'stderr' => '',
                     'exitCode' => 0,
@@ -35,7 +35,7 @@ it('launches Godot via open when preflights pass', function () {
 
     expect($exitCode)->toBe(0);
     expect($commands)->toContain(
-        ['open', '-a', 'Godot', '--args', '--path', '/Users/tester/projects/copland/console-godot']
+        ['open', '-a', 'Godot', '--args', '--path', '/Users/tester/projects/copland/console-godot', '--copland-bin', '/Users/tester/projects/copland/copland']
     );
     // D-07: mdfind is the preferred probe and must run first.
     expect($commands[0])->toBe(['mdfind', "kMDItemCFBundleIdentifier == 'org.godotengine.godot'"]);
