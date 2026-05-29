@@ -67,7 +67,7 @@
 
 ### Phases
 
-- [ ] **Phase 23: Config Read Contract** — `copland config show --json` emits the merged global + per-repo configuration snapshot the Godot console reads from (CFG-01)
+- [x] **Phase 23: Config Read Contract** — `copland config show --json` emits the merged global + per-repo configuration snapshot the Godot console reads from (CFG-01) (completed 2026-05-29)
 - [ ] **Phase 24: Config Write — Global Repos List** — `copland config repos {add,edit,remove}` subcommands + Godot screen for managing `~/.copland.yml` `repos[]` entries (CFG-02, CFG-06)
 - [ ] **Phase 25: Config Write — Per-Repo `.copland.yml`** — `copland config repo set` subcommand + Godot per-repo editor for `task_source`, `repo_summary`, `conventions`, and llm stage overrides (CFG-04, CFG-06)
 - [ ] **Phase 26: Config Write — Asana Fields + Defaults & Models** — Two grouped config surfaces: global `asana_token` + per-repo Asana fields, and global defaults + stage models, each with CLI subcommand + Godot screen (CFG-03, CFG-05, CFG-06)
@@ -92,8 +92,8 @@
 **Plans**: 1 plan
 
 Plans:
-- [ ] 23-01-PLAN.md — Ship config:show {--json} command + ConfigShowService + canonical fixture, with full Pest unit/feature coverage of shape, redaction, and error paths
 
+- [x] 23-01-PLAN.md — Ship config:show {--json} command + ConfigShowService + canonical fixture, with full Pest unit/feature coverage of shape, redaction, and error paths
 
 #### Phase 24: Config Write — Global Repos List
 
@@ -195,7 +195,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 23. Config Read Contract | 0/1 | Not started | - |
+| 23. Config Read Contract | 1/1 | Complete   | 2026-05-29 |
 | 24. Config Write — Global Repos List | 0/0 | Not started | - |
 | 25. Config Write — Per-Repo `.copland.yml` | 0/0 | Not started | - |
 | 26. Config Write — Asana Fields + Defaults & Models | 0/0 | Not started | - |

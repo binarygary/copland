@@ -9,7 +9,7 @@
 
 ### Config UI
 
-- [ ] **CFG-01**: `copland config show --json` emits a structured JSON snapshot of the merged global + per-repo configuration (repos[], asana_token redaction state, per-repo asana fields, per-repo `.copland.yml` overrides, defaults, stage models) that the Godot console can consume without parsing YAML.
+- [x] **CFG-01**: `copland config show --json` emits a structured JSON snapshot of the merged global + per-repo configuration (repos[], asana_token redaction state, per-repo asana fields, per-repo `.copland.yml` overrides, defaults, stage models) that the Godot console can consume without parsing YAML.
 - [ ] **CFG-02**: User can list, add, edit, and remove entries in `~/.copland.yml` `repos[]` (slug + path) from the Godot console.
 - [ ] **CFG-03**: User can set the global `asana_token` and per-repo `asana_project` / `asana_filters` from the console.
 - [ ] **CFG-04**: User can edit per-repo `.copland.yml` fields (`task_source`, `repo_summary`, `conventions`, llm stage overrides) from the console for any configured repo.

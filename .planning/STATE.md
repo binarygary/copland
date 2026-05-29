@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Godot Console — Configuration + Operational Surfaces
-status: planning
-last_updated: "2026-05-29T02:00:00.000Z"
+status: verifying
+stopped_at: v2.1 roadmap created — Phases 23-29 defined, 12/12 requirements mapped, awaiting first plan
+last_updated: "2026-05-29T02:15:20.348Z"
 last_activity: 2026-05-29
 progress:
   total_phases: 7
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 14
 ---
 
 # Project State
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-29)
 
 **Core value:** A reliable overnight agent that opens merge-ready PRs without intervention.
-**Current focus:** Phase 23 — Config Read Contract (`copland config show --json`)
+**Current focus:** Phase 23 — Config Read Contract
 
 ## Current Position
 
-Phase: 23 — Config Read Contract
-Plan: —
-Status: Roadmap approved, awaiting first plan
-Last activity: 2026-05-29 — v2.1 roadmap created (Phases 23-29, 12 reqs mapped)
+Phase: 23 (Config Read Contract) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-05-29
 
 ## Performance Metrics
 
@@ -57,6 +58,9 @@ Recent decisions affecting current work:
 - Live-tail split into CLI emitter (Phase 28, PHP only) and console consumer (Phase 29, Godot only) so the contract is settled on one side before the other lands (2026-05-29)
 - DRILL phase build order: render first (DRILL-03), then row selection (DRILL-01), then ENTER/ESC navigation (DRILL-02) — single Phase 27 (2026-05-29)
 - Plan 22-02 documented the D-09 canonical-purpose split in both READMEs: `~/.copland/tasks/` = live console state (markdown + YAML, mutates per lifecycle, source of truth for Godot console); `~/.copland/logs/runs.jsonl` = append-only audit trail (one JSON record per run, never modified after append, not consumed by console) (2026-05-27)
+- [Phase ?]: Config snapshot v1 schema locked in tests/fixtures/config/show-snapshot.json — Phases 24-29 consume this contract
+- [Phase ?]: Per-repo local_config reads via raw Yaml::parseFile (NOT RepoConfig) so snapshot exposes the YAML as written
+- [Phase ?]: config:show preflight (file-exists / parse / repo-path) runs BEFORE new GlobalConfig so the bootstrap auto-create cannot mask missing-file errors
 
 ### Pending Todos
 
@@ -73,6 +77,12 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-29T02:00:00Z
+Last session: 2026-05-29T02:14:55.906Z
 Stopped at: v2.1 roadmap created — Phases 23-29 defined, 12/12 requirements mapped, awaiting first plan
-Resume file: None — start with `/gsd:plan-phase 23` for the CLI read-contract phase.
+Resume file: None
+
+## Performance Metrics
+
+| Phase | Plan | Duration | Notes |
+|-------|------|----------|-------|
+| Phase 23 P01 | 25min | 4 tasks | 5 files |
