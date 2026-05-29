@@ -50,10 +50,15 @@ class CodexRunner
         ?string $model = null,
         int $timeoutSeconds = 600,
     ): array {
-        $schemaFile = $this->tempFile('schema');
-        $outFile = $this->tempFile('out');
+        // Created inside the try so a failure mid-creation can't leak a temp file
+        // (finally only unlinks what was actually assigned).
+        $schemaFile = null;
+        $outFile = null;
 
         try {
+            $schemaFile = $this->tempFile('schema');
+            $outFile = $this->tempFile('out');
+
             if (file_put_contents($schemaFile, $jsonSchema) === false) {
                 throw new RuntimeException('codex: failed to write schema temp file');
             }
@@ -107,8 +112,12 @@ class CodexRunner
                 'usage' => $this->parseUsage((string) $process->getOutput()),
             ];
         } finally {
-            @unlink($schemaFile);
-            @unlink($outFile);
+            if ($schemaFile !== null) {
+                @unlink($schemaFile);
+            }
+            if ($outFile !== null) {
+                @unlink($outFile);
+            }
         }
     }
 
