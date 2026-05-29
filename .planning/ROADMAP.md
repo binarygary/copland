@@ -109,7 +109,11 @@ Plans:
 
 **UI hint**: yes
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+
+- [ ] 24-01-PLAN.md — Ship YamlBlockEditor helper + config:repos:{add,edit,remove} subcommands + Godot Config hub scene with live Repos sub-view + retire COPLAND_BIN_DEFAULT
 
 #### Phase 25: Config Write — Per-Repo `.copland.yml`
 
@@ -196,7 +200,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 23. Config Read Contract | 1/1 | Complete   | 2026-05-29 |
-| 24. Config Write — Global Repos List | 0/0 | Not started | - |
+| 24. Config Write — Global Repos List | 0/1 | Not started | - |
 | 25. Config Write — Per-Repo `.copland.yml` | 0/0 | Not started | - |
 | 26. Config Write — Asana Fields + Defaults & Models | 0/0 | Not started | - |
 | 27. Run Drill-In Selection + Per-Run View | 0/0 | Not started | - |
