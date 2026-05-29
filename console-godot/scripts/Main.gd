@@ -63,6 +63,17 @@ const STATE_LABELS := {
     "blocked":   "BLOCKED",
 }
 
+# States that mean a run is already mid-flight for a task. "Run now" refuses to
+# relaunch these so the user can't spawn a duplicate run (and a duplicate PR).
+const IN_FLIGHT_STATES := ["selected", "planning", "planned", "executing", "verifying"]
+
+# After launching a run we can't trust the optimistic row state (a manifest
+# re-pull reverts it before the detached CLI writes 'selected' to the run-store).
+# So we also remember launch times locally and refuse a relaunch within this
+# window — long enough for the run-store to catch up, after which IN_FLIGHT_STATES
+# takes over. Self-expiring so a failed/reset task can still be re-run later.
+const RELAUNCH_GRACE_MS := 180000
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Type scale — much larger than iter-1. Console-sized, not app-sized.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -179,6 +190,10 @@ const TASKS_PULL_EVERY := 15
 # when the worker finishes.
 const MAX_OPS_LOG_LINES := 6
 var copland_bin: String = ""
+
+# "repo#issue" -> Time.get_ticks_msec() when a run was launched via "Run now".
+# Backs the relaunch guard so it survives manifest re-pulls (see RELAUNCH_GRACE_MS).
+var launched_at_ms: Dictionary = {}
 var ops_log_panel: PanelContainer
 var ops_log_lines_box: VBoxContainer
 var ops_log_buffer: Array = []
@@ -468,6 +483,9 @@ func _input(event: InputEvent) -> void:
                 _refresh_focus_styles()
             elif focus_region == 1:
                 _show_drill_in()
+        KEY_R:
+            _action_run_now()
+            get_viewport().set_input_as_handled()
         KEY_S:
             _spawn_copland("STATUS", PackedStringArray(["status"]))
             get_viewport().set_input_as_handled()
@@ -1449,6 +1467,7 @@ func _set_footer_clusters(mode: String) -> void:
     if mode == "drill_in":
         clusters = [
             {"label": "ACTION", "commands": [["ESC", "BACK"]]},
+            {"label": "RUN",    "commands": [["R", "RUN NOW"]]},
             {"label": "NOTES",  "commands": [["E", "EDIT NOTES"]]},
             {"label": "UTILITY", "commands": [["S", "STATUS"]]},
         ]
@@ -1456,6 +1475,7 @@ func _set_footer_clusters(mode: String) -> void:
         clusters = [
             {"label": "NAVIGATION", "commands": [["↑ ↓", "SELECT"], ["TAB", "CYCLE PANE"]]},
             {"label": "ACTION",     "commands": [["ENTER", "DRILL IN"], ["ESC", "BACK"]]},
+            {"label": "RUN",        "commands": [["R", "RUN NOW"]]},
             {"label": "CREATE",     "commands": [["A", "ADD REPO"]]},
             {"label": "CONFIG",     "commands": [["C", "CONFIG"]]},
             {"label": "UTILITY",    "commands": [["S", "STATUS"]]},
@@ -1612,6 +1632,63 @@ func _poll_ops_thread() -> void:
     ops_thread = null
     ops_thread_label = ""
     _set_status("MONITORING", false)
+
+
+# "Run now" — kick a full, targeted run for the selected task and return
+# immediately. The CLI bypasses the selector (--issue <n>) and writes run-store
+# status as it progresses; the manifest poll reflects real state on the next
+# tick. We optimistically flip the row to SELECTED so the action registers
+# instantly. Launched detached via OS.create_process so a multi-minute run never
+# holds the ops slot or blocks app close (unlike the blocking _spawn_copland).
+func _action_run_now() -> void:
+    if filtered_tasks.is_empty():
+        _append_ops_log("Run now — no task selected.", true)
+        return
+
+    var t: Dictionary = filtered_tasks[selected_task_index]
+    var repo := String(t.get("repo", ""))
+    var issue := String(t.get("issue", "")).lstrip("#")
+    if repo == "" or issue == "":
+        _append_ops_log("Run now — task has no repo/issue (sample data?). Skipped.", true)
+        return
+
+    var state := String(t.get("state", ""))
+    if state in IN_FLIGHT_STATES:
+        _append_ops_log("Run now — #%s is already %s. Not relaunching." % [issue, state.to_upper()], true)
+        return
+
+    # Guard the window between launch and the run-store reflecting 'selected',
+    # during which the optimistic row state can revert on a poll. Keyed by
+    # repo+issue so it can't be defeated by a re-pull.
+    var run_key := "%s#%s" % [repo, issue]
+    var now_ms := Time.get_ticks_msec()
+    if launched_at_ms.has(run_key) and now_ms - int(launched_at_ms[run_key]) < RELAUNCH_GRACE_MS:
+        _append_ops_log("Run now — #%s was just launched. Not relaunching." % issue, true)
+        return
+
+    if copland_bin == "":
+        copland_bin = _resolve_copland_bin()
+    if copland_bin == "":
+        _append_ops_log("Run now — copland binary not found (pass --copland-bin, set $COPLAND_BIN, or add to PATH).", true)
+        return
+
+    var args := PackedStringArray(["run", repo, "--issue", issue])
+    var pid := OS.create_process(copland_bin, args)
+    if pid <= 0:
+        _append_ops_log("Run now — failed to launch copland (pid %d)." % pid, true)
+        return
+
+    _append_ops_log("$ %s run %s --issue %s  (background, pid %d)" % [copland_bin.get_file(), repo, issue, pid], true)
+    launched_at_ms[run_key] = now_ms
+
+    # Optimistic local flip: 'selected' is the first status the orchestrator
+    # writes, so this matches what the next poll will confirm. filtered_tasks
+    # shares dict refs with `tasks`, so mutating here sticks until the re-pull.
+    t["state"] = "selected"
+    _refresh_task_list()
+    _refresh_details()
+    if drill_in_visible:
+        _populate_drill_in()
 
 
 func _set_status(text: String, busy: bool) -> void:

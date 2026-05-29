@@ -32,13 +32,20 @@ class RunOrchestratorService
         private ?TaskDirectoryWriterService $taskWriter = null,
     ) {}
 
-    public function run(string $repo, array $repoProfile, ?callable $progressCallback = null, ?RunProgressSnapshot $snapshot = null): RunResult
+    /**
+     * @param  ?string  $targetIssueNumber  When set, the Claude selector is bypassed and this
+     *                                      specific issue is run, provided it survives the
+     *                                      prefilter. Used by the "run now" action in the
+     *                                      Godot console to act on a task the user picked.
+     */
+    public function run(string $repo, array $repoProfile, ?callable $progressCallback = null, ?RunProgressSnapshot $snapshot = null, ?string $targetIssueNumber = null): RunResult
     {
         $this->log = [];
         $this->progressCallback = $progressCallback;
         $startedAt = date(DATE_ATOM);
         $result = null;
         $selectedIssue = null;
+        $selectorUsage = null;
         $runLogStore = $this->runLogStore ?? new RunLogStore;
         $caught = null;
         $repoPath = null;
@@ -56,53 +63,83 @@ class RunOrchestratorService
             $prefiltered = $this->prefilter->filter($issues);
             $this->pushLog('      '.count($prefiltered->accepted).' accepted, '.count($prefiltered->rejected).' rejected after prefilter');
 
-            // Step 2: Claude select
-            $this->pushLog('[2/8] Running Claude selector');
-            $selection = $this->selector->selectTask($repoProfile, $prefiltered->accepted);
-            if ($snapshot !== null) {
-                $snapshot->selectorUsage = $selection->usage;
-            }
-            $this->pushLog("      Selector decision: {$selection->decision} — {$selection->reason}");
+            // Step 2: pick the issue to work on — either a user-requested target
+            // (selector bypassed) or Claude's choice across the candidates.
+            if ($targetIssueNumber !== null) {
+                $this->pushLog("[2/8] Targeted run — bypassing selector for requested task #{$targetIssueNumber}");
 
-            if ($selection->decision === 'skip_all') {
-                $result = new RunResult(
-                    status: 'skipped',
-                    prUrl: null,
-                    prNumber: null,
-                    selectedIssueTitle: null,
-                    selectedTaskId: null,
-                    failureReason: $selection->reason,
-                    log: $this->log,
-                    startedAt: $startedAt,
-                    finishedAt: date(DATE_ATOM),
-                    selectorUsage: $selection->usage,
-                );
-
-                return $result;
-            }
-
-            foreach ($prefiltered->accepted as $issue) {
-                if ((string) $issue['number'] === (string) $selection->selectedTaskId) {
-                    $selectedIssue = $issue;
-                    break;
+                foreach ($prefiltered->accepted as $issue) {
+                    if ((string) $issue['number'] === (string) $targetIssueNumber) {
+                        $selectedIssue = $issue;
+                        break;
+                    }
                 }
-            }
 
-            if ($selectedIssue === null) {
-                $result = new RunResult(
-                    status: 'failed',
-                    prUrl: null,
-                    prNumber: null,
-                    selectedIssueTitle: null,
-                    selectedTaskId: $selection->selectedTaskId,
-                    failureReason: "Selected task #{$selection->selectedTaskId} not found",
-                    log: $this->log,
-                    startedAt: $startedAt,
-                    finishedAt: date(DATE_ATOM),
-                    selectorUsage: $selection->usage,
-                );
+                if ($selectedIssue === null) {
+                    $result = new RunResult(
+                        status: 'failed',
+                        prUrl: null,
+                        prNumber: null,
+                        selectedIssueTitle: null,
+                        selectedTaskId: $targetIssueNumber,
+                        failureReason: "Requested task #{$targetIssueNumber} is not an accepted candidate (prefiltered out, closed, or not in this repo)",
+                        log: $this->log,
+                        startedAt: $startedAt,
+                        finishedAt: date(DATE_ATOM),
+                        selectorUsage: null,
+                    );
 
-                return $result;
+                    return $result;
+                }
+            } else {
+                $this->pushLog('[2/8] Running Claude selector');
+                $selection = $this->selector->selectTask($repoProfile, $prefiltered->accepted);
+                $selectorUsage = $selection->usage;
+                if ($snapshot !== null) {
+                    $snapshot->selectorUsage = $selectorUsage;
+                }
+                $this->pushLog("      Selector decision: {$selection->decision} — {$selection->reason}");
+
+                if ($selection->decision === 'skip_all') {
+                    $result = new RunResult(
+                        status: 'skipped',
+                        prUrl: null,
+                        prNumber: null,
+                        selectedIssueTitle: null,
+                        selectedTaskId: null,
+                        failureReason: $selection->reason,
+                        log: $this->log,
+                        startedAt: $startedAt,
+                        finishedAt: date(DATE_ATOM),
+                        selectorUsage: $selectorUsage,
+                    );
+
+                    return $result;
+                }
+
+                foreach ($prefiltered->accepted as $issue) {
+                    if ((string) $issue['number'] === (string) $selection->selectedTaskId) {
+                        $selectedIssue = $issue;
+                        break;
+                    }
+                }
+
+                if ($selectedIssue === null) {
+                    $result = new RunResult(
+                        status: 'failed',
+                        prUrl: null,
+                        prNumber: null,
+                        selectedIssueTitle: null,
+                        selectedTaskId: $selection->selectedTaskId,
+                        failureReason: "Selected task #{$selection->selectedTaskId} not found",
+                        log: $this->log,
+                        startedAt: $startedAt,
+                        finishedAt: date(DATE_ATOM),
+                        selectorUsage: $selectorUsage,
+                    );
+
+                    return $result;
+                }
             }
 
             if ($snapshot !== null) {
@@ -150,7 +187,7 @@ class RunOrchestratorService
                     log: $this->log,
                     startedAt: $startedAt,
                     finishedAt: date(DATE_ATOM),
-                    selectorUsage: $selection->usage,
+                    selectorUsage: $selectorUsage,
                     plannerUsage: $plan->usage,
                 );
 
@@ -177,7 +214,7 @@ class RunOrchestratorService
                     log: $this->log,
                     startedAt: $startedAt,
                     finishedAt: date(DATE_ATOM),
-                    selectorUsage: $selection->usage,
+                    selectorUsage: $selectorUsage,
                     plannerUsage: $plan->usage,
                 );
 
@@ -228,7 +265,7 @@ class RunOrchestratorService
                     log: $this->log,
                     startedAt: $startedAt,
                     finishedAt: date(DATE_ATOM),
-                    selectorUsage: $selection->usage,
+                    selectorUsage: $selectorUsage,
                     plannerUsage: $plan->usage,
                     executorUsage: $executionResult->usage,
                     executorDurationSeconds: $executionResult->durationSeconds,
@@ -264,7 +301,7 @@ class RunOrchestratorService
                     log: $this->log,
                     startedAt: $startedAt,
                     finishedAt: date(DATE_ATOM),
-                    selectorUsage: $selection->usage,
+                    selectorUsage: $selectorUsage,
                     plannerUsage: $plan->usage,
                     executorUsage: $executionResult->usage,
                     executorDurationSeconds: $executionResult->durationSeconds,
@@ -316,7 +353,7 @@ class RunOrchestratorService
                 log: $this->log,
                 startedAt: $startedAt,
                 finishedAt: date(DATE_ATOM),
-                selectorUsage: $selection->usage,
+                selectorUsage: $selectorUsage,
                 plannerUsage: $plan->usage,
                 executorUsage: $executionResult->usage,
                 executorDurationSeconds: $executionResult->durationSeconds,

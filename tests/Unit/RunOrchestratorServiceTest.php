@@ -1,13 +1,12 @@
 <?php
 
+use App\Contracts\TaskSource;
 use App\Data\ExecutionResult;
 use App\Data\ModelUsage;
 use App\Data\PlanResult;
 use App\Data\PrefilterResult;
-use App\Data\RunResult;
 use App\Data\SelectionResult;
 use App\Data\VerificationResult;
-use App\Contracts\TaskSource;
 use App\Services\ClaudeExecutorService;
 use App\Services\ClaudePlannerService;
 use App\Services\ClaudeSelectorService;
@@ -22,7 +21,7 @@ use App\Support\RunLogStore;
 use App\Support\RunProgressSnapshot;
 
 afterEach(function () {
-    \Mockery::close();
+    Mockery::close();
 });
 
 it('completes the happy path and opens a draft PR', function () {
@@ -33,37 +32,37 @@ it('completes the happy path and opens a draft PR', function () {
     $execution = executionResult(success: true, summary: 'Implemented successfully');
     $verification = new VerificationResult(true, []);
 
-    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource = Mockery::mock(TaskSource::class);
     $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
     $taskSource->shouldReceive('openDraftPr')->once()->with('acme/repo', 'feature/test-branch', 'Test PR', 'PR body')
         ->andReturn(['html_url' => 'https://example.test/pr/1', 'number' => 1]);
     $taskSource->shouldReceive('removeTag')->once()->with('acme/repo', 42, 'agent-ready');
-    $taskSource->shouldReceive('addComment')->once()->with('acme/repo', 42, \Mockery::type('string'));
+    $taskSource->shouldReceive('addComment')->once()->with('acme/repo', 42, Mockery::type('string'));
 
-    $prefilter = \Mockery::mock(IssuePrefilterService::class);
+    $prefilter = Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
 
-    $selector = \Mockery::mock(ClaudeSelectorService::class);
+    $selector = Mockery::mock(ClaudeSelectorService::class);
     $selector->shouldReceive('selectTask')->once()->andReturn($selection);
 
-    $planner = \Mockery::mock(ClaudePlannerService::class);
+    $planner = Mockery::mock(ClaudePlannerService::class);
     $planner->shouldReceive('planTask')->once()->andReturn($plan);
 
-    $validator = \Mockery::mock(PlanValidatorService::class);
+    $validator = Mockery::mock(PlanValidatorService::class);
     $validator->shouldReceive('validate')->once()->andReturn([]);
 
-    $workspace = \Mockery::mock(WorkspaceService::class);
+    $workspace = Mockery::mock(WorkspaceService::class);
     $workspace->shouldReceive('create')->once()->with('/repos/acme', 'feature/test-branch', '')->andReturn('/tmp/worktree');
     $workspace->shouldReceive('cleanup')->once()->with('/repos/acme', '/tmp/worktree');
 
-    $git = \Mockery::mock(GitService::class);
+    $git = Mockery::mock(GitService::class);
     $git->shouldReceive('commit')->once()->with('/tmp/worktree', 'agent: implement #42 Fix bug');
     $git->shouldReceive('push')->once()->with('/tmp/worktree', 'feature/test-branch');
 
-    $executor = \Mockery::mock(ClaudeExecutorService::class);
+    $executor = Mockery::mock(ClaudeExecutorService::class);
     $executor->shouldReceive('executeWithRepoProfile')->once()->andReturn($execution);
 
-    $verifier = \Mockery::mock(VerificationService::class);
+    $verifier = Mockery::mock(VerificationService::class);
     $verifier->shouldReceive('verify')->once()->andReturn($verification);
 
     $service = makeOrchestrator(
@@ -96,13 +95,13 @@ it('returns skipped when the selector skips all issues', function () {
     $stores = makeStores();
     $issue = makeIssue();
 
-    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource = Mockery::mock(TaskSource::class);
     $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
 
-    $prefilter = \Mockery::mock(IssuePrefilterService::class);
+    $prefilter = Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
 
-    $selector = \Mockery::mock(ClaudeSelectorService::class);
+    $selector = Mockery::mock(ClaudeSelectorService::class);
     $selector->shouldReceive('selectTask')->once()->andReturn(new SelectionResult('skip_all', null, 'nothing safe', [], usage('selector')));
 
     $service = makeOrchestrator(
@@ -125,16 +124,16 @@ it('returns skipped when the planner declines the selected issue', function () {
     $stores = makeStores();
     $issue = makeIssue();
 
-    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource = Mockery::mock(TaskSource::class);
     $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
 
-    $prefilter = \Mockery::mock(IssuePrefilterService::class);
+    $prefilter = Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
 
-    $selector = \Mockery::mock(ClaudeSelectorService::class);
+    $selector = Mockery::mock(ClaudeSelectorService::class);
     $selector->shouldReceive('selectTask')->once()->andReturn(new SelectionResult('accept', 42, 'ok', [], usage('selector')));
 
-    $planner = \Mockery::mock(ClaudePlannerService::class);
+    $planner = Mockery::mock(ClaudePlannerService::class);
     $planner->shouldReceive('planTask')->once()->andReturn(makeOrchestratorPlan(decision: 'decline', declineReason: 'too risky', usage: usage('planner')));
 
     $service = makeOrchestrator(
@@ -159,19 +158,19 @@ it('returns failed when validation fails after saving the plan artifact', functi
     $issue = makeIssue();
     $plan = makeOrchestratorPlan(usage: usage('planner'));
 
-    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource = Mockery::mock(TaskSource::class);
     $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
 
-    $prefilter = \Mockery::mock(IssuePrefilterService::class);
+    $prefilter = Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
 
-    $selector = \Mockery::mock(ClaudeSelectorService::class);
+    $selector = Mockery::mock(ClaudeSelectorService::class);
     $selector->shouldReceive('selectTask')->once()->andReturn(new SelectionResult('accept', 42, 'ok', [], usage('selector')));
 
-    $planner = \Mockery::mock(ClaudePlannerService::class);
+    $planner = Mockery::mock(ClaudePlannerService::class);
     $planner->shouldReceive('planTask')->once()->andReturn($plan);
 
-    $validator = \Mockery::mock(PlanValidatorService::class);
+    $validator = Mockery::mock(PlanValidatorService::class);
     $validator->shouldReceive('validate')->once()->andReturn(['blocked path']);
 
     $service = makeOrchestrator(
@@ -198,33 +197,33 @@ it('returns failed immediately when the executor reports failure', function () {
     $plan = makeOrchestratorPlan(usage: usage('planner'));
     $execution = executionResult(success: false, summary: 'executor blew up');
 
-    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource = Mockery::mock(TaskSource::class);
     $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
-    $taskSource->shouldReceive('addComment')->once()->with('acme/repo', 42, \Mockery::on(fn (string $body) => str_contains($body, 'executor blew up')));
+    $taskSource->shouldReceive('addComment')->once()->with('acme/repo', 42, Mockery::on(fn (string $body) => str_contains($body, 'executor blew up')));
 
-    $prefilter = \Mockery::mock(IssuePrefilterService::class);
+    $prefilter = Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
 
-    $selector = \Mockery::mock(ClaudeSelectorService::class);
+    $selector = Mockery::mock(ClaudeSelectorService::class);
     $selector->shouldReceive('selectTask')->once()->andReturn(new SelectionResult('accept', 42, 'ok', [], usage('selector')));
 
-    $planner = \Mockery::mock(ClaudePlannerService::class);
+    $planner = Mockery::mock(ClaudePlannerService::class);
     $planner->shouldReceive('planTask')->once()->andReturn($plan);
 
-    $validator = \Mockery::mock(PlanValidatorService::class);
+    $validator = Mockery::mock(PlanValidatorService::class);
     $validator->shouldReceive('validate')->once()->andReturn([]);
 
-    $workspace = \Mockery::mock(WorkspaceService::class);
+    $workspace = Mockery::mock(WorkspaceService::class);
     $workspace->shouldReceive('create')->once()->andReturn('/tmp/worktree');
-    $workspace->shouldReceive('cleanup')->once()->with(\Mockery::any(), '/tmp/worktree');
+    $workspace->shouldReceive('cleanup')->once()->with(Mockery::any(), '/tmp/worktree');
 
-    $executor = \Mockery::mock(ClaudeExecutorService::class);
+    $executor = Mockery::mock(ClaudeExecutorService::class);
     $executor->shouldReceive('executeWithRepoProfile')->once()->andReturn($execution);
 
-    $verifier = \Mockery::mock(VerificationService::class);
+    $verifier = Mockery::mock(VerificationService::class);
     $verifier->shouldNotReceive('verify');
 
-    $git = \Mockery::mock(GitService::class);
+    $git = Mockery::mock(GitService::class);
     $git->shouldNotReceive('commit');
     $git->shouldNotReceive('push');
 
@@ -255,30 +254,30 @@ it('returns failed when verification fails after execution', function () {
     $plan = makeOrchestratorPlan(usage: usage('planner'));
     $execution = executionResult(success: true, summary: 'implemented');
 
-    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource = Mockery::mock(TaskSource::class);
     $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
-    $taskSource->shouldReceive('addComment')->once()->with('acme/repo', 42, \Mockery::on(fn (string $body) => str_contains($body, 'verification failed')));
+    $taskSource->shouldReceive('addComment')->once()->with('acme/repo', 42, Mockery::on(fn (string $body) => str_contains($body, 'verification failed')));
 
-    $prefilter = \Mockery::mock(IssuePrefilterService::class);
+    $prefilter = Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
 
-    $selector = \Mockery::mock(ClaudeSelectorService::class);
+    $selector = Mockery::mock(ClaudeSelectorService::class);
     $selector->shouldReceive('selectTask')->once()->andReturn(new SelectionResult('accept', 42, 'ok', [], usage('selector')));
 
-    $planner = \Mockery::mock(ClaudePlannerService::class);
+    $planner = Mockery::mock(ClaudePlannerService::class);
     $planner->shouldReceive('planTask')->once()->andReturn($plan);
 
-    $validator = \Mockery::mock(PlanValidatorService::class);
+    $validator = Mockery::mock(PlanValidatorService::class);
     $validator->shouldReceive('validate')->once()->andReturn([]);
 
-    $workspace = \Mockery::mock(WorkspaceService::class);
+    $workspace = Mockery::mock(WorkspaceService::class);
     $workspace->shouldReceive('create')->once()->andReturn('/tmp/worktree');
-    $workspace->shouldReceive('cleanup')->once()->with(\Mockery::any(), '/tmp/worktree');
+    $workspace->shouldReceive('cleanup')->once()->with(Mockery::any(), '/tmp/worktree');
 
-    $executor = \Mockery::mock(ClaudeExecutorService::class);
+    $executor = Mockery::mock(ClaudeExecutorService::class);
     $executor->shouldReceive('executeWithRepoProfile')->once()->andReturn($execution);
 
-    $verifier = \Mockery::mock(VerificationService::class);
+    $verifier = Mockery::mock(VerificationService::class);
     $verifier->shouldReceive('verify')->once()->andReturn(new VerificationResult(false, ['verification failed']));
 
     $service = makeOrchestrator(
@@ -307,27 +306,27 @@ it('cleans up the workspace and writes a partial run log when the executor throw
     $plan = makeOrchestratorPlan(usage: usage('planner'));
     $snapshot = new RunProgressSnapshot;
 
-    $taskSource = \Mockery::mock(TaskSource::class);
+    $taskSource = Mockery::mock(TaskSource::class);
     $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
 
-    $prefilter = \Mockery::mock(IssuePrefilterService::class);
+    $prefilter = Mockery::mock(IssuePrefilterService::class);
     $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
 
-    $selector = \Mockery::mock(ClaudeSelectorService::class);
+    $selector = Mockery::mock(ClaudeSelectorService::class);
     $selector->shouldReceive('selectTask')->once()->andReturn(new SelectionResult('accept', 42, 'ok', [], usage('selector')));
 
-    $planner = \Mockery::mock(ClaudePlannerService::class);
+    $planner = Mockery::mock(ClaudePlannerService::class);
     $planner->shouldReceive('planTask')->once()->andReturn($plan);
 
-    $validator = \Mockery::mock(PlanValidatorService::class);
+    $validator = Mockery::mock(PlanValidatorService::class);
     $validator->shouldReceive('validate')->once()->andReturn([]);
 
-    $workspace = \Mockery::mock(WorkspaceService::class);
+    $workspace = Mockery::mock(WorkspaceService::class);
     $workspace->shouldReceive('create')->once()->andReturn('/tmp/worktree');
-    $workspace->shouldReceive('cleanup')->once()->with(\Mockery::any(), '/tmp/worktree');
+    $workspace->shouldReceive('cleanup')->once()->with(Mockery::any(), '/tmp/worktree');
 
-    $executor = \Mockery::mock(ClaudeExecutorService::class);
-    $executor->shouldReceive('executeWithRepoProfile')->once()->andThrow(new \RuntimeException('kaboom'));
+    $executor = Mockery::mock(ClaudeExecutorService::class);
+    $executor->shouldReceive('executeWithRepoProfile')->once()->andThrow(new RuntimeException('kaboom'));
 
     $service = makeOrchestrator(
         taskSource: $taskSource,
@@ -342,12 +341,108 @@ it('cleans up the workspace and writes a partial run log when the executor throw
     );
 
     expect(fn () => $service->run('acme/repo', [], snapshot: $snapshot))
-        ->toThrow(\RuntimeException::class, 'kaboom');
+        ->toThrow(RuntimeException::class, 'kaboom');
 
     expect($stores['log']->payloads)->toHaveCount(1);
     expect($stores['log']->payloads[0]['status'])->toBe('crashed');
     expect($stores['log']->payloads[0]['partial'])->toBeTrue();
     expect($stores['log']->payloads[0]['issue']['number'])->toBe(42);
+});
+
+it('runs a requested issue end-to-end without invoking the selector', function () {
+    $stores = makeStores();
+    $issue = makeIssue();
+    $plan = makeOrchestratorPlan(usage: usage('planner'));
+    $execution = executionResult(success: true, summary: 'Implemented successfully');
+    $verification = new VerificationResult(true, []);
+
+    $taskSource = Mockery::mock(TaskSource::class);
+    $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
+    $taskSource->shouldReceive('openDraftPr')->once()->andReturn(['html_url' => 'https://example.test/pr/7', 'number' => 7]);
+    $taskSource->shouldReceive('removeTag')->once();
+    $taskSource->shouldReceive('addComment')->once();
+
+    $prefilter = Mockery::mock(IssuePrefilterService::class);
+    $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
+
+    // The whole point of a targeted run: the selector is bypassed.
+    $selector = Mockery::mock(ClaudeSelectorService::class);
+    $selector->shouldNotReceive('selectTask');
+
+    $planner = Mockery::mock(ClaudePlannerService::class);
+    $planner->shouldReceive('planTask')->once()->andReturn($plan);
+
+    $validator = Mockery::mock(PlanValidatorService::class);
+    $validator->shouldReceive('validate')->once()->andReturn([]);
+
+    $workspace = Mockery::mock(WorkspaceService::class);
+    $workspace->shouldReceive('create')->once()->andReturn('/tmp/worktree');
+    $workspace->shouldReceive('cleanup')->once()->with(Mockery::any(), '/tmp/worktree');
+
+    $git = Mockery::mock(GitService::class);
+    $git->shouldReceive('commit')->once();
+    $git->shouldReceive('push')->once();
+
+    $executor = Mockery::mock(ClaudeExecutorService::class);
+    $executor->shouldReceive('executeWithRepoProfile')->once()->andReturn($execution);
+
+    $verifier = Mockery::mock(VerificationService::class);
+    $verifier->shouldReceive('verify')->once()->andReturn($verification);
+
+    $service = makeOrchestrator(
+        taskSource: $taskSource,
+        prefilter: $prefilter,
+        selector: $selector,
+        planner: $planner,
+        validator: $validator,
+        workspace: $workspace,
+        git: $git,
+        executor: $executor,
+        verifier: $verifier,
+        planArtifactStore: $stores['plan'],
+        runLogStore: $stores['log'],
+    );
+
+    $result = $service->run('acme/repo', ['repo_path' => '/repos/acme', 'required_labels' => ['agent-ready']], targetIssueNumber: '42');
+
+    expect($result->status)->toBe('succeeded');
+    expect($result->prUrl)->toBe('https://example.test/pr/7');
+    expect($result->selectedTaskId)->toBe(42);
+    // No selector ran, so no selector usage is attributed to the run.
+    expect($result->selectorUsage)->toBeNull();
+});
+
+it('fails when the requested issue is not an accepted candidate', function () {
+    $stores = makeStores();
+    $issue = makeIssue(); // number 42
+
+    $taskSource = Mockery::mock(TaskSource::class);
+    $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
+
+    $prefilter = Mockery::mock(IssuePrefilterService::class);
+    $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
+
+    $selector = Mockery::mock(ClaudeSelectorService::class);
+    $selector->shouldNotReceive('selectTask');
+
+    $planner = Mockery::mock(ClaudePlannerService::class);
+    $planner->shouldNotReceive('planTask');
+
+    $service = makeOrchestrator(
+        taskSource: $taskSource,
+        prefilter: $prefilter,
+        selector: $selector,
+        planner: $planner,
+        planArtifactStore: $stores['plan'],
+        runLogStore: $stores['log'],
+    );
+
+    $result = $service->run('acme/repo', [], targetIssueNumber: '999');
+
+    expect($result->status)->toBe('failed');
+    expect($result->failureReason)->toContain('not an accepted candidate');
+    expect($result->selectedTaskId)->toBe('999');
+    expect($stores['plan']->saved)->toBe([]);
 });
 
 function makeOrchestrator(
@@ -364,15 +459,15 @@ function makeOrchestrator(
     ?RunLogStore $runLogStore = null,
 ): RunOrchestratorService {
     return new RunOrchestratorService(
-        $taskSource ?? \Mockery::mock(TaskSource::class),
-        $prefilter ?? \Mockery::mock(IssuePrefilterService::class),
-        $selector ?? \Mockery::mock(ClaudeSelectorService::class),
-        $planner ?? \Mockery::mock(ClaudePlannerService::class),
-        $validator ?? \Mockery::mock(PlanValidatorService::class),
-        $workspace ?? \Mockery::mock(WorkspaceService::class),
-        $git ?? \Mockery::mock(GitService::class),
-        $executor ?? \Mockery::mock(ClaudeExecutorService::class),
-        $verifier ?? \Mockery::mock(VerificationService::class),
+        $taskSource ?? Mockery::mock(TaskSource::class),
+        $prefilter ?? Mockery::mock(IssuePrefilterService::class),
+        $selector ?? Mockery::mock(ClaudeSelectorService::class),
+        $planner ?? Mockery::mock(ClaudePlannerService::class),
+        $validator ?? Mockery::mock(PlanValidatorService::class),
+        $workspace ?? Mockery::mock(WorkspaceService::class),
+        $git ?? Mockery::mock(GitService::class),
+        $executor ?? Mockery::mock(ClaudeExecutorService::class),
+        $verifier ?? Mockery::mock(VerificationService::class),
         $planArtifactStore,
         $runLogStore,
     );
