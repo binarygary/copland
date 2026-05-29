@@ -66,6 +66,35 @@ it('rejects --issue without an explicit repo argument', function () {
     expect($tester->getDisplay())->toContain('--issue option requires an explicit repo');
 });
 
+it('rejects a present-but-non-numeric --issue instead of falling back to selection', function () {
+    $called = false;
+
+    $command = new RunCommand(
+        globalConfig: new class extends GlobalConfig
+        {
+            public function __construct() {}
+
+            public function configuredRepos(): array
+            {
+                return [['slug' => 'acme/repo', 'path' => '/tmp/acme-repo']];
+            }
+        },
+        repoRunner: function () use (&$called): RunResult {
+            $called = true;
+
+            throw new RuntimeException('should not run');
+        },
+    );
+    $command->setLaravel($this->app);
+
+    $tester = new CommandTester($command);
+    $exitCode = $tester->execute(['repo' => 'acme/repo', '--issue' => 'abc']);
+
+    expect($exitCode)->toBe(1);
+    expect($called)->toBeFalse();
+    expect($tester->getDisplay())->toContain("Invalid --issue value 'abc'");
+});
+
 it('passes the normalized target issue through to the run for a configured repo', function () {
     $capturedIssue = 'unset';
 

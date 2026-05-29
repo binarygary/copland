@@ -57,9 +57,18 @@ class RunCommand extends Command implements SignalableCommandInterface
         $this->snapshot = new RunProgressSnapshot;
         $globalConfig = $this->globalConfig ?? new GlobalConfig;
         $requestedRepo = $this->argument('repo');
-        $targetIssue = $this->normalizeIssueOption($this->option('issue'));
+        $rawIssue = $this->option('issue');
+        $targetIssue = $this->normalizeIssueOption($rawIssue);
         $originalPath = getcwd() ?: '.';
         $repoRuns = [];
+
+        // A present-but-non-numeric --issue (e.g. a typo) must fail loudly rather
+        // than silently falling through to a normal selector-driven run.
+        if (is_string($rawIssue) && trim($rawIssue) !== '' && $targetIssue === null) {
+            $this->error("Invalid --issue value '{$rawIssue}' — expected an issue number like 42 or #42.");
+
+            return self::FAILURE;
+        }
 
         // A targeted run acts on one specific issue, so it needs an unambiguous
         // repo — running "this issue" across every configured repo is meaningless.

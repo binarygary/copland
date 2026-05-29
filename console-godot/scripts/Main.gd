@@ -67,6 +67,13 @@ const STATE_LABELS := {
 # relaunch these so the user can't spawn a duplicate run (and a duplicate PR).
 const IN_FLIGHT_STATES := ["selected", "planning", "planned", "executing", "verifying"]
 
+# After launching a run we can't trust the optimistic row state (a manifest
+# re-pull reverts it before the detached CLI writes 'selected' to the run-store).
+# So we also remember launch times locally and refuse a relaunch within this
+# window — long enough for the run-store to catch up, after which IN_FLIGHT_STATES
+# takes over. Self-expiring so a failed/reset task can still be re-run later.
+const RELAUNCH_GRACE_MS := 180000
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Type scale — much larger than iter-1. Console-sized, not app-sized.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -183,6 +190,10 @@ const TASKS_PULL_EVERY := 15
 # when the worker finishes.
 const MAX_OPS_LOG_LINES := 6
 var copland_bin: String = ""
+
+# "repo#issue" -> Time.get_ticks_msec() when a run was launched via "Run now".
+# Backs the relaunch guard so it survives manifest re-pulls (see RELAUNCH_GRACE_MS).
+var launched_at_ms: Dictionary = {}
 var ops_log_panel: PanelContainer
 var ops_log_lines_box: VBoxContainer
 var ops_log_buffer: Array = []
@@ -1646,6 +1657,15 @@ func _action_run_now() -> void:
         _append_ops_log("Run now — #%s is already %s. Not relaunching." % [issue, state.to_upper()], true)
         return
 
+    # Guard the window between launch and the run-store reflecting 'selected',
+    # during which the optimistic row state can revert on a poll. Keyed by
+    # repo+issue so it can't be defeated by a re-pull.
+    var run_key := "%s#%s" % [repo, issue]
+    var now_ms := Time.get_ticks_msec()
+    if launched_at_ms.has(run_key) and now_ms - int(launched_at_ms[run_key]) < RELAUNCH_GRACE_MS:
+        _append_ops_log("Run now — #%s was just launched. Not relaunching." % issue, true)
+        return
+
     if copland_bin == "":
         copland_bin = _resolve_copland_bin()
     if copland_bin == "":
@@ -1659,6 +1679,7 @@ func _action_run_now() -> void:
         return
 
     _append_ops_log("$ %s run %s --issue %s  (background, pid %d)" % [copland_bin.get_file(), repo, issue, pid], true)
+    launched_at_ms[run_key] = now_ms
 
     # Optimistic local flip: 'selected' is the first status the orchestrator
     # writes, so this matches what the next poll will confirm. filtered_tasks
