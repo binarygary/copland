@@ -236,8 +236,11 @@ static func _read_frontmatter(file_path: String) -> Dictionary:
             else:
                 break
         if not in_frontmatter:
-            # status.md has no leading "---"; treat all leading scalar lines
-            # as frontmatter until a blank line.
+            # Fallback for legacy or hand-edited files where the opening "---"
+            # delimiter was omitted. Both task.md and status.md now always start
+            # with "---" (writer invariant), so this branch is effectively dead
+            # code for normal files but is kept for defensive compatibility with
+            # malformed input.
             if stripped == "":
                 if seen_open:
                     break
