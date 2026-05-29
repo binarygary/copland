@@ -85,18 +85,91 @@ it('serves cached issues and overlays run-store state without hitting GitHub', f
         $byId = collect($tasks)->keyBy('id');
 
         // Accepted + worked issue: state overlaid from the run-store.
-        expect($byId['#42']['state'])->toBe('executing');
-        expect($byId['#42']['is_real'])->toBeTrue();
-        expect($byId['#42']['runs_count'])->toBe(1);
-        expect($byId['#42']['task_dir'])->toBe($taskDir);
-        expect($byId['#42']['updated'])->toBe('2026-05-16 09:30');
-        expect($byId['#42']['failure_reason'])->toBe('claude-code: process exited with status 1');
+        expect($byId[$slug.'#42']['state'])->toBe('executing');
+        expect($byId[$slug.'#42']['is_real'])->toBeTrue();
+        expect($byId[$slug.'#42']['runs_count'])->toBe(1);
+        expect($byId[$slug.'#42']['task_dir'])->toBe($taskDir);
+        expect($byId[$slug.'#42']['updated'])->toBe('2026-05-16 09:30');
+        expect($byId[$slug.'#42']['failure_reason'])->toBe('claude-code: process exited with status 1');
 
         // Rejected issue: blocked, with the prefilter reason as the summary.
-        expect($byId['#99']['state'])->toBe('blocked');
-        expect($byId['#99']['summary'])->toBe('matched risky keyword: migration');
-        expect($byId['#99']['task_dir'])->toBe('');
+        expect($byId[$slug.'#99']['state'])->toBe('blocked');
+        expect($byId[$slug.'#99']['summary'])->toBe('matched risky keyword: migration');
+        expect($byId[$slug.'#99']['task_dir'])->toBe('');
     } finally {
         $cleanup();
+    }
+});
+
+it('uses repo-qualified ids when different repos cache the same issue number', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $home = sys_get_temp_dir().'/copland-tasklist-'.uniqid();
+    $now = 1_700_000_000;
+
+    mkdir($home, 0755, true);
+    $_SERVER['HOME'] = $home;
+
+    $repoOnePath = $home.'/repo-one';
+    $repoTwoPath = $home.'/repo-two';
+    mkdir($repoOnePath, 0755, true);
+    mkdir($repoTwoPath, 0755, true);
+
+    file_put_contents($home.'/.copland.yml', <<<YML
+        repos:
+          - slug: acme/one
+            path: {$repoOnePath}
+          - slug: acme/two
+            path: {$repoTwoPath}
+        YML);
+
+    try {
+        mkdir($home.'/.copland', 0700, true);
+        file_put_contents($home.'/.copland/issues-cache.json', json_encode([
+            'acme/one' => [
+                'generated_at' => $now,
+                'accepted' => [
+                    ['number' => 42, 'title' => 'First repo issue', 'body' => 'one', 'created_at' => '2026-05-14T21:08:00Z'],
+                ],
+                'rejected' => [],
+            ],
+            'acme/two' => [
+                'generated_at' => $now,
+                'accepted' => [
+                    ['number' => 42, 'title' => 'Second repo issue', 'body' => 'two', 'created_at' => '2026-05-14T21:08:00Z'],
+                ],
+                'rejected' => [],
+            ],
+        ]));
+
+        $service = new TaskListService(
+            config: new GlobalConfig,
+            githubFactory: function () {
+                throw new RuntimeException('GitHub must not be called when cache is fresh');
+            },
+            cacheTtlSeconds: 120,
+            clock: fn (): int => $now,
+        );
+
+        $tasks = $service->build();
+
+        expect($tasks)->toHaveCount(2);
+
+        $byId = collect($tasks)->keyBy('id');
+
+        expect($byId->keys()->all())->toBe(['acme/one#42', 'acme/two#42']);
+        expect($byId['acme/one#42']['issue'])->toBe('#42');
+        expect($byId['acme/two#42']['issue'])->toBe('#42');
+    } finally {
+        if (is_dir($home)) {
+            $it = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($home, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST,
+            );
+            foreach ($it as $node) {
+                $node->isDir() ? rmdir($node->getPathname()) : unlink($node->getPathname());
+            }
+            rmdir($home);
+        }
+        $_SERVER['HOME'] = $originalHome;
     }
 });
