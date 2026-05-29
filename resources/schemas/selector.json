@@ -1,12 +1,13 @@
 {
   "type": "object",
+  "additionalProperties": false,
   "properties": {
     "decision": {
       "type": "string",
       "enum": ["act", "skip"]
     },
     "selected_task_id": {
-      "type": ["string", "integer", "null"]
+      "type": ["string", "null"]
     },
     "reason": {
       "type": "string"
@@ -14,9 +15,19 @@
     "rejections": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "task_id": {
+            "type": ["string", "null"]
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": ["task_id", "reason"]
       }
     }
   },
-  "required": ["decision"]
+  "required": ["decision", "selected_task_id", "reason", "rejections"]
 }

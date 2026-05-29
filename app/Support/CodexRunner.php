@@ -88,9 +88,14 @@ class CodexRunner
             $process->run();
 
             if (! $process->isSuccessful()) {
-                $stderr = trim($process->getErrorOutput()) ?: '(no stderr)';
                 $exit = $process->getExitCode();
-                throw new RuntimeException("codex: process exited with status {$exit}: {$stderr}");
+                // The actionable failure (e.g. an invalid_json_schema 400) is in
+                // the JSONL `error`/`turn.failed` events on stdout, not stderr —
+                // stderr carries unrelated noise (MCP auth, deprecations). Prefer
+                // the stream error so failures are diagnosable.
+                $detail = $this->extractStreamError((string) $process->getOutput())
+                    ?? (trim($process->getErrorOutput()) ?: '(no stderr)');
+                throw new RuntimeException("codex: process exited with status {$exit}: {$detail}");
             }
 
             // The --output-last-message file holds the final, schema-constrained
@@ -148,6 +153,37 @@ class CodexRunner
         }
 
         return $usage;
+    }
+
+    /**
+     * Extract the most relevant error message from the JSONL stream — codex
+     * reports request failures (e.g. invalid_json_schema) as `error` and
+     * `turn.failed` events on stdout rather than as a non-zero stderr message.
+     * Returns null when no such event is present.
+     */
+    private function extractStreamError(string $stdout): ?string
+    {
+        $found = null;
+
+        foreach (explode("\n", $stdout) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            $event = json_decode($line, true);
+            if (! is_array($event)) {
+                continue;
+            }
+
+            $type = $event['type'] ?? '';
+            if ($type === 'turn.failed' && isset($event['error']['message'])) {
+                $found = (string) $event['error']['message'];
+            } elseif ($type === 'error' && isset($event['message'])) {
+                $found = (string) $event['message'];
+            }
+        }
+
+        return $found;
     }
 
     private function tempFile(string $kind): string
