@@ -1,0 +1,16 @@
+# Top-of-file comment — must survive every write.
+claude_api_key: ""
+
+# Pre-repos comment — describes the repos block below.
+repos:
+  # In-block comment between header and entries — DOCUMENTED LOSS.
+  - slug: owner/keep-me
+    path: HOME_PLACEHOLDER/keep-me
+  # In-block comment between entries — DOCUMENTED LOSS.
+  - slug: owner/leave-me
+    path: HOME_PLACEHOLDER/leave-me
+
+# Post-repos comment — must survive every write.
+defaults:
+  max_files_changed: 3
+# Trailing comment — must survive.
