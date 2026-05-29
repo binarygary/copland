@@ -2417,7 +2417,9 @@ class HeaderCrown extends Control:
         # equals the left edge of the first panel and x=w equals the right
         # edge of the last panel).
         var rule_pad := 24.0
-        var rule_y: float = sub_y + s_dims.y / 2.0 - 2
+        var asc: float = font.get_ascent(sub_size)
+        var desc: float = font.get_descent(sub_size)
+        var rule_y: float = sub_y - (asc - desc) / 2.0
         var rule_left_x0: float = 0.0
         var rule_left_x1: float = sub_x - rule_pad
         var rule_right_x0: float = sub_x + s_dims.x + rule_pad
