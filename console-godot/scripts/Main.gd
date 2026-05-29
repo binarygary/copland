@@ -1120,14 +1120,20 @@ func _build_details_pane(box: VBoxContainer) -> void:
     summary_title.add_theme_font_size_override("font_size", 12)
     box.add_child(summary_title)
 
+    var summary_scroll := ScrollContainer.new()
+    summary_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    summary_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    summary_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    box.add_child(summary_scroll)
+
     detail_summary = RichTextLabel.new()
-    detail_summary.fit_content = true
+    detail_summary.fit_content = false
     detail_summary.bbcode_enabled = true
     detail_summary.add_theme_color_override("default_color", PALETTE.cream)
     detail_summary.add_theme_font_size_override("normal_font_size", TYPE.detail_body)
     detail_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    detail_summary.scroll_active = false
-    box.add_child(detail_summary)
+    detail_summary.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    summary_scroll.add_child(detail_summary)
 
     # Files-in-scope section
     var files_title := Label.new()
@@ -1145,7 +1151,7 @@ func _build_details_pane(box: VBoxContainer) -> void:
     detail_empty.add_theme_color_override("font_color", PALETTE.faint)
     detail_empty.add_theme_font_size_override("font_size", 12)
     detail_empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    detail_empty.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    detail_empty.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     box.add_child(detail_empty)
 
 
@@ -1548,9 +1554,16 @@ func _make_ops_log_panel() -> PanelContainer:
     head_rule.custom_minimum_size = Vector2(0, 1)
     inner.add_child(head_rule)
 
+    var ops_scroll := ScrollContainer.new()
+    ops_scroll.custom_minimum_size = Vector2(0, 100)
+    ops_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    ops_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    inner.add_child(ops_scroll)
+
     ops_log_lines_box = VBoxContainer.new()
+    ops_log_lines_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     ops_log_lines_box.add_theme_constant_override("separation", 2)
-    inner.add_child(ops_log_lines_box)
+    ops_scroll.add_child(ops_log_lines_box)
 
     return p
 
