@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "defaults": {
+    "max_files_changed": 3,
+    "max_lines_changed": 250,
+    "base_branch": "main",
+    "selector_model": "claude-haiku-4-5",
+    "planner_model": "claude-sonnet-4-6",
+    "executor_model": "claude-sonnet-4-6"
+  },
+  "asana_token_set": true,
+  "repos": [
+    {
+      "slug": "owner/copland",
+      "path": "/Users/example/projects/copland",
+      "asana_project": null,
+      "asana_filters": [],
+      "local_config": {
+        "task_source": "github",
+        "repo_summary": "PHP CLI tool that opens overnight PRs.",
+        "conventions": "PSR-12; PHPUnit via Pest.",
+        "llm": {}
+      }
+    },
+    {
+      "slug": "owner/sibling",
+      "path": "/Users/example/projects/sibling",
+      "asana_project": "1234567890",
+      "asana_filters": [],
+      "local_config": null
+    }
+  ]
+}
