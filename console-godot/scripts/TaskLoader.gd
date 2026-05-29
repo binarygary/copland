@@ -225,15 +225,19 @@ static func _read_frontmatter(file_path: String) -> Dictionary:
     var lines := text.split("\n")
     var in_frontmatter := false
     var seen_open := false
+    var opened_with_delimiter := false
+    var closed_delimiter := false
     for raw in lines:
         var line: String = raw.strip_edges(false, true)
         var stripped: String = line.strip_edges()
         if stripped == "---":
             if not seen_open:
                 seen_open = true
+                opened_with_delimiter = true
                 in_frontmatter = true
                 continue
             else:
+                closed_delimiter = true
                 break
         if not in_frontmatter:
             # status.md has no leading "---"; treat all leading scalar lines
@@ -263,6 +267,8 @@ static func _read_frontmatter(file_path: String) -> Dictionary:
         val = val.replace("\\r", "\r")
         val = val.replace(soh, "\\")
         out[key] = val
+    if opened_with_delimiter and not closed_delimiter:
+        return {}
     return out
 
 

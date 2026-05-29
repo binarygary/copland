@@ -113,7 +113,10 @@ class GitHubService
                 'head' => $branch,
                 'base' => 'main',
                 'body' => $body,
-                'draft' => true,
+                // Opened ready-to-merge (not a GitHub draft) so PRs aren't blocked
+                // from merging behind a manual "Ready for review" click. (Method
+                // name retains the legacy "Draft" for now.)
+                'draft' => false,
             ],
         ]);
     }
