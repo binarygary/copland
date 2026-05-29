@@ -2,11 +2,98 @@
 
 use App\Services\TaskDirectoryWriterService;
 
-it('writes task.md and status.md under a temporary HOME for a GitHub-shaped task', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-task-writer-'.uniqid();
+function createTaskWriterTempHome(): string
+{
+    $home = sys_get_temp_dir().'/copland-'.bin2hex(random_bytes(8));
     mkdir($home, 0755, true);
     $_SERVER['HOME'] = $home;
+    $GLOBALS['taskWriterCurrentTempHome'] = $home;
+
+    return $home;
+}
+
+function deleteTaskWriterTempHome(string $path): void
+{
+    if (! is_dir($path)) {
+        return;
+    }
+
+    $items = scandir($path);
+    if ($items === false) {
+        return;
+    }
+
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..') {
+            continue;
+        }
+
+        $itemPath = $path.DIRECTORY_SEPARATOR.$item;
+        if (is_dir($itemPath) && ! is_link($itemPath)) {
+            deleteTaskWriterTempHome($itemPath);
+
+            continue;
+        }
+
+        unlink($itemPath);
+    }
+
+    rmdir($path);
+}
+
+function restoreTaskWriterHome(): void
+{
+    if ($GLOBALS['taskWriterOriginalHomeWasSet']) {
+        $_SERVER['HOME'] = $GLOBALS['taskWriterOriginalHome'];
+
+        return;
+    }
+
+    unset($_SERVER['HOME']);
+}
+
+function cleanupTaskWriterTempHome(): void
+{
+    $home = $GLOBALS['taskWriterCurrentTempHome'] ?? null;
+    if ($home !== null) {
+        deleteTaskWriterTempHome($home);
+        $GLOBALS['taskWriterCurrentTempHome'] = null;
+    }
+
+    restoreTaskWriterHome();
+}
+
+beforeEach(function () {
+    $GLOBALS['taskWriterOriginalHomeWasSet'] = array_key_exists('HOME', $_SERVER);
+    $GLOBALS['taskWriterOriginalHome'] = $_SERVER['HOME'] ?? null;
+    $GLOBALS['taskWriterCurrentTempHome'] = null;
+});
+
+afterEach(function () {
+    cleanupTaskWriterTempHome();
+});
+
+it('cleans the tracked temporary HOME and restores HOME after an exception', function () {
+    $home = createTaskWriterTempHome();
+
+    try {
+        throw new RuntimeException('expected temp HOME cleanup failure path');
+    } catch (RuntimeException $exception) {
+        expect($exception->getMessage())->toBe('expected temp HOME cleanup failure path');
+        cleanupTaskWriterTempHome();
+    }
+
+    expect(is_dir($home))->toBeFalse();
+
+    if ($GLOBALS['taskWriterOriginalHomeWasSet']) {
+        expect($_SERVER['HOME'])->toBe($GLOBALS['taskWriterOriginalHome']);
+    } else {
+        expect(array_key_exists('HOME', $_SERVER))->toBeFalse();
+    }
+});
+
+it('writes task.md and status.md under a temporary HOME for a GitHub-shaped task', function () {
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T08:14:01Z');
 
@@ -49,14 +136,10 @@ it('writes task.md and status.md under a temporary HOME for a GitHub-shaped task
     expect($statusContent)->toContain('state: "blocked"');
     expect($statusContent)->toContain('| 2026-05-27T08:14:01Z | blocked |');
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writes task.md for an Asana-shaped task with empty source_url and string GID', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-asana-task-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T09:00:00Z');
 
@@ -78,14 +161,10 @@ it('writes task.md for an Asana-shaped task with empty source_url and string GID
     expect($taskContent)->toContain('repo_slug: "copland"');
     expect($taskContent)->toContain('Asana body');
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writes task.md frontmatter with all 7 keys matching the TaskLoader contract', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-task-keys-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T10:00:00Z');
 
@@ -109,14 +188,10 @@ it('writes task.md frontmatter with all 7 keys matching the TaskLoader contract'
     expect($taskContent)->toContain('created_at: "2026-05-27T10:00:00Z"');
     expect($taskContent)->toContain('Body text here.');
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writeStatus produces an 8-row transitions table across the full lifecycle', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-status-lifecycle-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $counter = 0;
     $clock = function () use (&$counter) {
@@ -144,14 +219,10 @@ it('writeStatus produces an 8-row transitions table across the full lifecycle', 
     }
     expect($rowCount)->toBe(8);
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writeBlockedIfNotTerminal is a no-op after pr_open', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-no-op-pr-open-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T12:00:00Z');
 
@@ -165,14 +236,10 @@ it('writeBlockedIfNotTerminal is a no-op after pr_open', function () {
     expect(substr_count($statusContent, '| pr_open |'))->toBe(1);
     expect(substr_count($statusContent, '| blocked |'))->toBe(0);
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writeBlockedIfNotTerminal is a no-op after blocked', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-no-op-blocked-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T12:30:00Z');
 
@@ -185,14 +252,10 @@ it('writeBlockedIfNotTerminal is a no-op after blocked', function () {
     expect($statusContent)->toContain('state: "blocked"');
     expect(substr_count($statusContent, '| blocked |'))->toBe(1);
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writeBlockedIfNotTerminal transitions executing -> blocked', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-exec-to-blocked-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T13:00:00Z');
 
@@ -206,14 +269,10 @@ it('writeBlockedIfNotTerminal transitions executing -> blocked', function () {
     expect(substr_count($statusContent, '| executing |'))->toBe(1);
     expect(substr_count($statusContent, '| blocked |'))->toBe(1);
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writeRunStatus produces a per-run transitions table for the full lifecycle', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-run-lifecycle-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $counter = 0;
     $clock = function () use (&$counter) {
@@ -242,14 +301,10 @@ it('writeRunStatus produces a per-run transitions table for the full lifecycle',
     }
     expect($rowCount)->toBe(8);
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writeRunStatus accepts a 13-digit string task id and a Z-form run id', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-run-asana-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T15:00:00Z');
 
@@ -266,14 +321,10 @@ it('writeRunStatus accepts a 13-digit string task id and a Z-form run id', funct
     expect($statusContent)->toContain('updated_at: "2026-05-27T15:00:00Z"');
     expect($statusContent)->toContain('| 2026-05-27T15:00:00Z | planning |');
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writeRunBlockedIfNotTerminal respects per-run pr_open as terminal', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-run-no-op-pr-open-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T16:00:00Z');
 
@@ -289,14 +340,10 @@ it('writeRunBlockedIfNotTerminal respects per-run pr_open as terminal', function
     expect(substr_count($statusContent, '| pr_open |'))->toBe(1);
     expect(substr_count($statusContent, '| blocked |'))->toBe(0);
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writeRunBlockedIfNotTerminal transitions verifying -> blocked', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-run-verifying-to-blocked-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T16:30:00Z');
 
@@ -312,14 +359,10 @@ it('writeRunBlockedIfNotTerminal transitions verifying -> blocked', function () 
     expect(substr_count($statusContent, '| verifying |'))->toBe(1);
     expect(substr_count($statusContent, '| blocked |'))->toBe(1);
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writeRunOutcome emits all 9 D-05 frontmatter keys', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-outcome-keys-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T17:00:00Z');
 
@@ -358,14 +401,10 @@ it('writeRunOutcome emits all 9 D-05 frontmatter keys', function () {
         expect((bool) preg_match("/^{$key}: /m", $outcomeContent))->toBeTrue();
     }
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writeRunOutcome accepts an optional body with a per-stage usage table', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-outcome-body-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T17:30:00Z');
 
@@ -400,14 +439,10 @@ it('writeRunOutcome accepts an optional body with a per-stage usage table', func
     $afterFrontmatter = substr($outcomeContent, $closingPos + 5);
     expect($afterFrontmatter)->toContain('## Usage');
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('atomic write leaves no .tmp residue after a successful write', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-atomic-write-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T18:00:00Z');
 
@@ -432,14 +467,10 @@ it('atomic write leaves no .tmp residue after a successful write', function () {
     expect(glob($taskDir.'/*.tmp'))->toBe([]);
     expect(glob($runDir.'/*.tmp'))->toBe([]);
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writing twice into the same task/run dir is idempotent', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-idempotent-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T18:30:00Z');
 
@@ -454,14 +485,10 @@ it('writing twice into the same task/run dir is idempotent', function () {
     $statusContent = file_get_contents($statusPath);
     expect(substr_count($statusContent, '| new |'))->toBe(2);
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('three sequential writeStatus calls produce a 3-row table not an overwrite', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-3-row-table-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $counter = 0;
     $clock = function () use (&$counter) {
@@ -484,14 +511,10 @@ it('three sequential writeStatus calls produce a 3-row table not an overwrite', 
     expect(substr_count($statusContent, '| planning |'))->toBe(1);
     expect($statusContent)->toContain('state: "planning"');
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('lastState map keeps task-level and per-run tuples isolated', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-tuple-isolation-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T20:00:00Z');
 
@@ -513,14 +536,10 @@ it('lastState map keeps task-level and per-run tuples isolated', function () {
     $runStatusPath = $home.'/.copland/tasks/owner__repo/42/runs/'.$runId.'/status.md';
     expect(file_exists($runStatusPath))->toBeFalse();
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('writeStatus and writeRunStatus on the same task do not cross-pollute lastState', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-cross-pollute-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T20:30:00Z');
 
@@ -543,14 +562,10 @@ it('writeStatus and writeRunStatus on the same task do not cross-pollute lastSta
     expect(substr_count($runStatusContent, '| planning |'))->toBe(1);
     expect(substr_count($runStatusContent, '| blocked |'))->toBe(0);
 
-    $_SERVER['HOME'] = $originalHome;
 });
 
 it('escapes newlines in frontmatter so outcome.md stays parseable on multi-line failure_reason (BL-01)', function () {
-    $originalHome = $_SERVER['HOME'] ?? null;
-    $home = sys_get_temp_dir().'/copland-bl01-'.uniqid();
-    mkdir($home, 0755, true);
-    $_SERVER['HOME'] = $home;
+    $home = createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-28T00:00:00Z');
 
@@ -624,5 +639,4 @@ it('escapes newlines in frontmatter so outcome.md stays parseable on multi-line 
     $content3 = file_get_contents($path3);
     expect($content3)->toContain('failure_reason: "path: C:\\\\Users\\\\foo"');
 
-    $_SERVER['HOME'] = $originalHome;
 });
