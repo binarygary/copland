@@ -174,7 +174,7 @@ it('Test 7: a file (not a directory) for --path is rejected with the same templa
     );
 
     $filePath = $home.'/im-a-file.txt';
-    file_put_contents($filePath, "not a dir");
+    file_put_contents($filePath, 'not a dir');
 
     $tester = makeConfigReposAddTester();
     $exit = $tester->execute(
