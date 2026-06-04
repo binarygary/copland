@@ -72,7 +72,12 @@ class GitService
 
     public function stageAll(string $workspacePath): void
     {
-        $this->run(['git', 'add', '-A'], $workspacePath, 'git add failed');
+        // Exclude pathspec keeps `.copland.yml` out of staged content the same way
+        // hasUncommittedChanges()/changedFiles() ignore it. Without this, a
+        // repo-local `.copland.yml` that's currently untracked would slip into
+        // the agent's PR via `git add -A` even though the dirty-tree guard let
+        // the run proceed. (claude #58)
+        $this->run(['git', 'add', '-A', '--', '.', ':(exclude).copland.yml'], $workspacePath, 'git add failed');
     }
 
     public function commit(string $workspacePath, string $message): void

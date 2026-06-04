@@ -360,12 +360,28 @@ class RunOrchestratorService
             // staged content.
             $this->git->stageAll($workspacePath);
 
+            // hasStagedDiffVsBase now throws on unexpected git exit codes (bad
+            // base ref, corrupt index, etc.). If it throws, we've staged changes
+            // but won't reach either the skip cleanup or the commit step — the
+            // user's index would be left dirty. Reset before re-throwing so the
+            // checkout is restored. (copilot #58)
+            try {
+                $hasDiffVsBase = $this->git->hasStagedDiffVsBase($workspacePath, $baseBranch);
+            } catch (Throwable $diffError) {
+                try {
+                    $this->git->resetHard($workspacePath);
+                } catch (Throwable) {
+                    // Best-effort cleanup; original $diffError is still the actionable one.
+                }
+                throw $diffError;
+            }
+
             // No-diff guard runs BEFORE commit. `git commit` exits non-zero on an
             // empty index — the previous post-commit check let that throw and got
             // reported as a crash. A content diff (not commit count) catches the
             // case where the staged tree is identical to base (normalization
             // wiped the diff, executor's edit was a no-op, etc.).
-            if (! $this->git->hasStagedDiffVsBase($workspacePath, $baseBranch)) {
+            if (! $hasDiffVsBase) {
                 $reason = 'Executor produced no changes';
                 $this->pushLog("      Staged tree is identical to {$baseBranch} — no PR will be opened");
 

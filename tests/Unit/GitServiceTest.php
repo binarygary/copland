@@ -119,20 +119,22 @@ it('still surfaces stderr when present', function () {
         ->toThrow(RuntimeException::class, 'fatal: not a git repository');
 });
 
-it('stageAll runs git add -A and nothing else', function () {
+it('stageAll runs git add -A excluding .copland.yml and nothing else', function () {
     $calls = [];
     $git = new GitService(function (array $command, string $cwd) use (&$calls): array {
         $calls[] = $command;
 
         return match ($command) {
-            ['git', 'add', '-A'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
+            ['git', 'add', '-A', '--', '.', ':(exclude).copland.yml'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
             default => throw new RuntimeException('Unexpected command: '.implode(' ', $command)),
         };
     });
 
     $git->stageAll('/tmp/repo');
 
-    expect($calls)->toBe([['git', 'add', '-A']]);
+    // Locks in the exclude pathspec: .copland.yml must never be staged via
+    // stageAll, matching the changedFiles/dirty-tree ignore rule.
+    expect($calls)->toBe([['git', 'add', '-A', '--', '.', ':(exclude).copland.yml']]);
 });
 
 it('hasStagedDiffVsBase returns false when the staged tree matches base', function () {
