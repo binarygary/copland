@@ -2,7 +2,6 @@
 
 namespace App\Commands;
 
-use Anthropic\Client;
 use App\Config\GlobalConfig;
 use App\Config\RepoConfig;
 use App\Services\ClaudePlannerService;
@@ -11,8 +10,8 @@ use App\Services\CurrentRepoGuardService;
 use App\Services\GitHubService;
 use App\Services\IssuePrefilterService;
 use App\Services\PlanValidatorService;
-use App\Support\AnthropicApiClient;
 use App\Support\AnthropicCostEstimator;
+use App\Support\LlmClientFactory;
 use App\Support\PlanArtifactStore;
 use App\Support\ProgressReporter;
 use LaravelZero\Framework\Commands\Command;
@@ -33,12 +32,13 @@ class PlanCommand extends Command
 
         $this->line($progress->step('Load configuration'));
         $globalConfig = new GlobalConfig;
-        $apiClient = new AnthropicApiClient(
-            client: new Client(apiKey: $globalConfig->claudeApiKey()),
-            maxAttempts: $globalConfig->retryMaxAttempts(),
-            baseDelaySeconds: $globalConfig->retryBaseDelaySeconds(),
-        );
         $repoConfig = new RepoConfig(getcwd());
+
+        // Per-stage LLM client wiring matches RunCommand so `plan` honors the
+        // configured provider (codex / claude-code / ollama / anthropic). Without
+        // this, the command always 401'd under a no-Anthropic-key setup.
+        $selectorClient = LlmClientFactory::forStage('selector', $globalConfig, $repoConfig);
+        $plannerClient = LlmClientFactory::forStage('planner', $globalConfig, $repoConfig);
 
         $repoProfile = [
             'repo_summary' => $repoConfig->repoSummary(),
@@ -58,7 +58,7 @@ class PlanCommand extends Command
         $this->line($progress->detail(count($prefiltered->accepted).' accepted, '.count($prefiltered->rejected).' rejected'));
 
         $this->line($progress->step('Run Claude selector'));
-        $selector = new ClaudeSelectorService($globalConfig, $apiClient);
+        $selector = new ClaudeSelectorService($globalConfig, $selectorClient);
         $selection = $selector->selectTask($repoProfile, $prefiltered->accepted);
 
         $this->line($progress->detail("Selection: {$selection->decision}"));
@@ -86,7 +86,7 @@ class PlanCommand extends Command
 
         $this->line($progress->detail("Selected issue #{$selectedIssue['number']}: {$selectedIssue['title']}"));
         $this->line($progress->step('Run Claude planner'));
-        $planner = new ClaudePlannerService($globalConfig, $apiClient);
+        $planner = new ClaudePlannerService($globalConfig, $plannerClient);
         $plan = $planner->planTask($repoProfile, $selectedIssue);
 
         $this->line('');
