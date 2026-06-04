@@ -9,7 +9,7 @@ interface TaskSource
 
     public function addComment(string $repo, string|int $taskId, string $body): void;
 
-    public function openDraftPr(string $repo, string $branch, string $title, string $body): array;
+    public function openDraftPr(string $repo, string $branch, string $title, string $body, string $baseBranch): array;
 
     public function removeTag(string $repo, string|int $taskId, string $tag): void;
 }

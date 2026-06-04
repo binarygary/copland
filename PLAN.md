@@ -302,7 +302,7 @@ App injects runtime values (issue list, repo context, contract JSON, etc.) into 
 - `getCandidateIssues(string $repo): Collection`
 - `hasOpenLinkedPr(string $repo, int $issueNumber): bool`
 - `commentOnIssue(string $repo, int $issueNumber, string $body): void`
-- `createDraftPr(string $repo, string $branch, string $title, string $body): array`
+- `createDraftPr(string $repo, string $branch, string $title, string $body, string $baseBranch = 'main'): array`
 - `addLabel(string $repo, int $issueNumber, string $label): void`
 
 Auth via `gh auth token` at runtime.

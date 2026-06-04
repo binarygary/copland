@@ -37,9 +37,9 @@ final class AsanaTaskSource implements TaskSource
         $this->asana->addStory((string) $taskId, $body);
     }
 
-    public function openDraftPr(string $repo, string $branch, string $title, string $body): array
+    public function openDraftPr(string $repo, string $branch, string $title, string $body, string $baseBranch): array
     {
-        return $this->github->createDraftPr($repo, $branch, $title, $body);
+        return $this->github->createDraftPr($repo, $branch, $title, $body, $baseBranch);
     }
 
     public function removeTag(string $repo, string|int $taskId, string $tag): void
