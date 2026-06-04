@@ -41,6 +41,24 @@ class TaskDirectoryWriterService
 
     public function writeStatus(string $repoSlug, string|int $taskId, string $state): void
     {
+        $key = "{$repoSlug}/{$taskId}";
+        $current = $this->lastState[$key] ?? null;
+
+        // pr_open and blocked are terminal. Any forward transition past them is
+        // a bug (replay, recovery, or accidental orchestrator regression) — we'd
+        // rather throw than silently revert pr_open back to new. A no-op repeat
+        // of the same terminal state stays idempotent so retry-safe callers
+        // can call writeStatus(pr_open) twice without surprise.
+        if ($current === 'pr_open' || $current === 'blocked') {
+            if ($current === $state) {
+                return;
+            }
+
+            throw new RuntimeException(
+                "Cannot transition {$key} from terminal state '{$current}' to '{$state}'."
+            );
+        }
+
         $dir = $this->taskDir($repoSlug, $taskId);
         $this->ensureDirectoryExists($dir);
 

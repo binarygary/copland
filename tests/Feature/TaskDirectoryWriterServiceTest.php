@@ -190,7 +190,7 @@ it('writes task.md frontmatter with all 7 keys matching the TaskLoader contract'
 
 });
 
-it('writeStatus produces an 8-row transitions table across the full lifecycle', function () {
+it('writeStatus produces a 7-row transitions table across the happy-path lifecycle', function () {
     $home = createTaskWriterTempHome();
 
     $counter = 0;
@@ -202,7 +202,9 @@ it('writeStatus produces an 8-row transitions table across the full lifecycle', 
 
     $writer = new TaskDirectoryWriterService(clock: $clock);
 
-    $states = ['new', 'selected', 'planning', 'planned', 'executing', 'verifying', 'pr_open', 'blocked'];
+    // pr_open is the success terminal — writeStatus rejects further forward
+    // transitions past it (see the forward-only guard test below).
+    $states = ['new', 'selected', 'planning', 'planned', 'executing', 'verifying', 'pr_open'];
     foreach ($states as $state) {
         $writer->writeStatus('owner/repo', 99, $state);
     }
@@ -210,14 +212,14 @@ it('writeStatus produces an 8-row transitions table across the full lifecycle', 
     $statusPath = $home.'/.copland/tasks/owner__repo/99/status.md';
     $statusContent = file_get_contents($statusPath);
 
-    expect($statusContent)->toContain('state: "blocked"');
+    expect($statusContent)->toContain('state: "pr_open"');
 
     // Count rows in the transitions table by counting state-row matches.
     $rowCount = 0;
     foreach ($states as $state) {
         $rowCount += substr_count($statusContent, "| {$state} |");
     }
-    expect($rowCount)->toBe(8);
+    expect($rowCount)->toBe(7);
 
 });
 
@@ -282,6 +284,43 @@ it('writeRunStatus resets a malformed run status.md instead of doubling its cont
     $contents = (string) file_get_contents($statusPath);
     expect($contents)->not->toContain('malformed run status line');
     expect($sizeAfterSecond - $sizeAfterFirst)->toBe($rowOverhead);
+});
+
+it('writeStatus throws when transitioning out of the pr_open terminal state', function () {
+    createTaskWriterTempHome();
+
+    $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T15:00:00Z');
+
+    $writer->writeStatus('owner/repo', 70, 'pr_open');
+
+    expect(fn () => $writer->writeStatus('owner/repo', 70, 'new'))
+        ->toThrow(RuntimeException::class, 'terminal');
+});
+
+it('writeStatus throws when transitioning out of the blocked terminal state', function () {
+    createTaskWriterTempHome();
+
+    $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T15:30:00Z');
+
+    $writer->writeStatus('owner/repo', 71, 'blocked');
+
+    expect(fn () => $writer->writeStatus('owner/repo', 71, 'executing'))
+        ->toThrow(RuntimeException::class, 'terminal');
+});
+
+it('writeStatus is idempotent when re-emitted with the same terminal state (pr_open)', function () {
+    $home = createTaskWriterTempHome();
+
+    $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T16:00:00Z');
+
+    $writer->writeStatus('owner/repo', 72, 'pr_open');
+    $writer->writeStatus('owner/repo', 72, 'pr_open');
+
+    $statusContent = file_get_contents($home.'/.copland/tasks/owner__repo/72/status.md');
+
+    expect($statusContent)->toContain('state: "pr_open"');
+    // No second row written; the repeat call is a no-op.
+    expect(substr_count($statusContent, '| pr_open |'))->toBe(1);
 });
 
 it('writeBlockedIfNotTerminal is a no-op after pr_open', function () {
