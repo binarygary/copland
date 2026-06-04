@@ -530,11 +530,15 @@ class RunOrchestratorService
         };
 
         // Normalize DATE_ATOM -> Z-form to match the writer's gmdate('Y-m-d\TH:i:s\Z') convention.
-        $startedAtZ = gmdate('Y-m-d\TH:i:s\Z', strtotime((string) ($payload['started_at'] ?? $startedAt)));
-        $finishedAtZ = gmdate('Y-m-d\TH:i:s\Z', strtotime((string) ($payload['finished_at'] ?? date(DATE_ATOM))));
+        // strtotime() returns false on garbled input; PHP coerces that to 0, which would
+        // silently record 1970-01-01T00:00:00Z. Fall back to now and flag the run as partial
+        // so the approximate timestamp is at least surfaced.
+        [$startedAtZ, $startedAtFallback] = $this->normalizeTimestamp((string) ($payload['started_at'] ?? $startedAt));
+        [$finishedAtZ, $finishedAtFallback] = $this->normalizeTimestamp((string) ($payload['finished_at'] ?? date(DATE_ATOM)));
 
         $totalUsage = $payload['usage']['total'] ?? null;
         $totalCost = $totalUsage instanceof ModelUsage ? $totalUsage->estimatedCostUsd : 0.0;
+        $partial = ! empty($payload['partial']) || $startedAtFallback || $finishedAtFallback;
 
         // renderFrontmatter coerces all values via (string) — but bool true casts to '1', not 'true',
         // so emit 'true' / 'false' literals here for readability in the YAML head.
@@ -549,8 +553,22 @@ class RunOrchestratorService
             'started_at' => $startedAtZ,
             'finished_at' => $finishedAtZ,
             'failure_reason' => (string) ($payload['failure_reason'] ?? ''),
-            'partial' => ! empty($payload['partial']) ? 'true' : 'false',
+            'partial' => $partial ? 'true' : 'false',
         ];
+    }
+
+    /**
+     * @return array{0:string,1:bool} [Z-form timestamp, true if we fell back to now()]
+     */
+    private function normalizeTimestamp(string $value): array
+    {
+        $ts = strtotime($value);
+
+        if ($ts === false) {
+            return [gmdate('Y-m-d\TH:i:s\Z', time()), true];
+        }
+
+        return [gmdate('Y-m-d\TH:i:s\Z', $ts), false];
     }
 
     private function pushLog(string $entry): void
