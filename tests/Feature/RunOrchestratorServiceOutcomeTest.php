@@ -55,14 +55,20 @@ it('falls back to current UTC and flags partial when started_at is garbled', fun
     expect($outcome['partial'])->toBe('true');
 });
 
-it('flags partial when finished_at is garbled', function () {
+it('falls back to current UTC and flags partial when finished_at is garbled', function () {
+    $before = gmdate('Y-m-d\TH:i:s\Z');
     $outcome = invokeOutcomePayload([
         'status' => 'succeeded',
         'pr' => ['number' => 1, 'url' => 'https://example.test/pr/1'],
         'started_at' => '2025-01-01T00:00:00+00:00',
         'finished_at' => 'also-not-a-date',
     ]);
+    $after = gmdate('Y-m-d\TH:i:s\Z');
 
-    expect($outcome['finished_at'])->not->toBe('1970-01-01T00:00:00Z');
+    // Same bounded check as the started_at test: a regression that returned some
+    // wrong-but-not-epoch timestamp would have slipped through the loose "!= epoch"
+    // assertion this replaces.
+    expect(strcmp($outcome['finished_at'], $before))->toBeGreaterThanOrEqual(0);
+    expect(strcmp($outcome['finished_at'], $after))->toBeLessThanOrEqual(0);
     expect($outcome['partial'])->toBe('true');
 });
