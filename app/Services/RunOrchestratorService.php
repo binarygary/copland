@@ -342,14 +342,22 @@ class RunOrchestratorService
             // base_branch is required: a silent fallback to 'main' on a repo whose
             // real base is master/develop would compare against the wrong tree and
             // either pass spuriously or break the rev parse with a confusing error.
+            // Used immediately for the staged-diff check as well as the PR base.
             if (! isset($repoProfile['base_branch']) || ! is_string($repoProfile['base_branch']) || trim($repoProfile['base_branch']) === '') {
-                throw new \RuntimeException("repoProfile['base_branch'] is required for PR creation");
+                throw new \RuntimeException("repoProfile['base_branch'] is required for the no-diff guard and PR creation");
             }
-            $baseBranch = $repoProfile['base_branch'];
+            $baseBranch = trim($repoProfile['base_branch']);
 
             // Stage everything first so the diff check sees the full picture
             // (verifier counts untracked files via `git status --porcelain` but
             // those wouldn't show up in `git diff` until staged).
+            //
+            // NOTE: workspacePath is the user's live checkout — WorkspaceService::create
+            // returns $repoPath directly, no worktree. The staging mutates the real
+            // working index; the dirty-tree check in prepareExecutionBranch() at the
+            // top of the run is what makes this safe. If that upstream check ever
+            // changes, the resetHard cleanup below could destroy pre-existing
+            // staged content.
             $this->git->stageAll($workspacePath);
 
             // No-diff guard runs BEFORE commit. `git commit` exits non-zero on an
@@ -372,19 +380,39 @@ class RunOrchestratorService
                     $this->pushLog("      Warning: failed to clean up orphan branch: {$e->getMessage()}");
                 }
 
-                // Untag the issue so the next cron tick doesn't re-select it and
-                // re-skip in a loop. The on-issue comment carries the reason so
-                // the user can re-add the label after addressing it.
-                foreach ($repoProfile['required_labels'] ?? ['agent-ready'] as $label) {
-                    try {
-                        $this->taskSource->removeTag($repo, $selectedIssue['number'], $label);
-                        $this->pushLog("      Removed issue label {$label} (no-diff skip)");
-                    } catch (Throwable $e) {
-                        $this->pushLog("      Warning: failed to remove label {$label}: {$e->getMessage()}");
-                    }
+                // Remove ONE required label so the next cron tick doesn't re-select
+                // and re-skip the same issue forever. getIssues() filters with AND
+                // on all required_labels, so dropping any one is sufficient — and
+                // dropping only the first preserves unrelated eligibility labels
+                // the user may have added (e.g. 'high-priority' beside 'agent-ready').
+                //
+                // This skip-only untag is intentionally asymmetric with the other
+                // failure paths (verification, validator, executor, crash): a
+                // no-diff outcome usually means the issue is already resolved, so
+                // we want to stop the loop. Transient hard failures elsewhere
+                // benefit from retry, so they leave the labels intact.
+                //
+                // `required_labels: []` (explicit empty list) is treated the same
+                // as the missing-key default so the loop-prevention guarantee
+                // doesn't silently degrade.
+                $requiredLabels = $repoProfile['required_labels'] ?? [];
+                if (! is_array($requiredLabels) || $requiredLabels === []) {
+                    $requiredLabels = ['agent-ready'];
+                }
+                $triggerLabel = (string) $requiredLabels[array_key_first($requiredLabels)];
+
+                try {
+                    $this->taskSource->removeTag($repo, $selectedIssue['number'], $triggerLabel);
+                    $this->pushLog("      Removed issue label {$triggerLabel} (no-diff skip)");
+                } catch (Throwable $e) {
+                    $this->pushLog("      Warning: failed to remove label {$triggerLabel}: {$e->getMessage()}");
                 }
 
-                $this->comment($repo, $selectedIssue['number'], "⏭ **Skipped** — {$reason}.\n\nThe agent ran end-to-end but the resulting tree is identical to `{$baseBranch}`. Re-add the agent-ready label after addressing the underlying issue.");
+                $this->comment(
+                    $repo,
+                    $selectedIssue['number'],
+                    "⏭ **Skipped** — {$reason}.\n\nThe agent ran end-to-end but the resulting tree is identical to `{$baseBranch}`. Re-add the `{$triggerLabel}` label after addressing the underlying issue (or close the issue if no change is actually needed).",
+                );
 
                 $result = new RunResult(
                     status: 'skipped',
