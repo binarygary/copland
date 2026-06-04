@@ -229,6 +229,66 @@ Deeper detail in [`console-godot/README.md`](console-godot/README.md).
 6. Run `php ./copland run` manually, or install nightly automation with `php ./copland automate`.
 7. Review `~/.copland/logs/runs.jsonl` and any draft PRs the next morning.
 
+## Lifecycle
+
+A `copland run` advances a single task through a forward-only state machine. Every transition is written atomically to `~/.copland/tasks/<repo>/<id>/status.md` and mirrored under `runs/<runId>/status.md`. Once a task reaches `pr_open`, the writer rejects further state writes. The only allowed cycle reset is `blocked → new`, which lets a failed task retry on a later invocation.
+
+### State transitions
+
+```
+   ┌─────┐    ┌──────────┐    ┌──────────┐    ┌─────────┐
+─▶ │ new │──▶ │ selected │──▶ │ planning │──▶ │ planned │
+   └─────┘    └──────────┘    └──────────┘    └─────────┘
+                                                   │
+                                                   ▼
+                                            ┌───────────┐
+                                            │ executing │
+                                            └───────────┘
+                                                   │
+                                                   ▼
+                                            ┌───────────┐
+                                            │ verifying │
+                                            └───────────┘
+                                                   │
+                                       ┌───────────┴───────────┐
+                                       ▼                       ▼
+                                  ┌─────────┐            ┌───────────┐
+                                  │ pr_open │            │  blocked  │ ◀── any failure
+                                  └─────────┘            └───────────┘     (decline,
+                                  (terminal)                   │            validate,
+                                                               │            execute,
+                                                               └──▶ new     verify,
+                                                                            no-diff,
+                                                                            crash)
+```
+
+`crashed` is a per-run outcome recorded only in `runs/<runId>/outcome.md` (for orchestrator-level throws). The task-level status still resolves to `blocked` so the retry path stays consistent.
+
+### Stage artifacts
+
+Each stage advances `status.md` and posts a comment to the GitHub issue, so the issue thread is a human-readable mirror of the on-disk trace.
+
+| Stage         | State written | Artifacts written                                                | What to review                                  |
+|---------------|---------------|------------------------------------------------------------------|-------------------------------------------------|
+| Fetch         | —             | —                                                                | candidate count in `runs.jsonl`                 |
+| Select        | `selected`    | `tasks/<repo>/<id>/task.md`; issue comment "Selected"            | selector decision + reason in `runs.jsonl`     |
+| Plan          | `planning`    | issue comment "Planning…"                                        | planner decision; on decline, reason in comment |
+| Validate      | `planned`     | `~/.copland/runs/<repo>/last-plan.json`; plan comment on issue  | `last-plan.json` (full plan + validation errors)|
+| Execute       | `executing`   | branch edits in working tree; tool-call log; issue comment       | executor `summary`; `git diff`                  |
+| Verify        | `verifying`   | issue comment "Verifying…"                                       | verifier `failures[]` in `runs.jsonl` on fail   |
+| Commit + PR   | `pr_open`     | commit + push + draft PR; success comment with PR URL            | the PR diff itself                              |
+| Finally       | `blocked` if non-terminal | `runs.jsonl` append; `runs/<runId>/outcome.md`           | `tail ~/.copland/logs/runs.jsonl`               |
+
+### Where everything lands
+
+- `~/.copland/tasks/<repo>/<id>/task.md` — frozen issue body + frontmatter (title, repo path, html_url). Written once at entry.
+- `~/.copland/tasks/<repo>/<id>/status.md` — current task state plus the full transition table.
+- `~/.copland/tasks/<repo>/<id>/runs/<runId>/status.md` — per-run state log (one directory per `copland run`).
+- `~/.copland/tasks/<repo>/<id>/runs/<runId>/outcome.md` — terminal outcome frontmatter: `status` (`pr_open` / `blocked` / `crashed`), `pr_number`, `pr_url`, `cost_usd`, `started_at`, `finished_at`, `failure_reason`, `partial`.
+- `~/.copland/runs/<repo>/last-plan.json` — most recent planner output for this repo, including validation errors.
+- `~/.copland/logs/runs.jsonl` — append-only audit trail. One JSON line per `copland run` invocation.
+- The GitHub issue thread itself — every stage posts a status comment, so the issue is a chronological narrative of the run.
+
 ## Safety Model
 
 - One issue per run
