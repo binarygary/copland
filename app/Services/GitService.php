@@ -105,6 +105,21 @@ class GitService
             $workspacePath,
         );
 
+        // 0 == match, 1 == diff. Anything else (128 for "unknown revision",
+        // 129 for unknown flag, etc.) is a real git error. Treating those as
+        // "no diff" would have the orchestrator silently strip the agent-ready
+        // label, delete the local branch, and post a misleading "Executor
+        // produced no changes" comment — masking a typo in base_branch or a
+        // base ref that isn't checked out locally.
+        if ($result['exitCode'] !== 0 && $result['exitCode'] !== 1) {
+            $stderr = trim($result['stderr']);
+            $detail = $stderr !== '' ? $stderr : trim($result['stdout']);
+
+            throw new RuntimeException(
+                "git diff --cached --quiet '{$baseBranch}' failed (exit {$result['exitCode']}): {$detail}"
+            );
+        }
+
         return $result['exitCode'] === 1;
     }
 

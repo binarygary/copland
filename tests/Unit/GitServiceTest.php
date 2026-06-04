@@ -81,9 +81,11 @@ it('refuses to prepare an execution branch from a dirty checkout', function () {
 });
 
 it('surfaces stdout when commit fails with stderr empty', function () {
-    $git = new GitService(function (array $command, string $cwd): array {
+    $calls = [];
+    $git = new GitService(function (array $command, string $cwd) use (&$calls): array {
+        $calls[] = $command;
+
         return match ($command) {
-            ['git', 'add', '-A'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
             ['git', 'commit', '-m', 'no changes here'] => [
                 'stdout' => "nothing to commit, working tree clean\n",
                 'stderr' => '',
@@ -95,12 +97,15 @@ it('surfaces stdout when commit fails with stderr empty', function () {
 
     expect(fn () => $git->commit('/tmp/repo', 'no changes here'))
         ->toThrow(RuntimeException::class, 'nothing to commit');
+
+    // commit() no longer stages — callers run stageAll() separately. Locks in
+    // the stage/commit split so a regression that re-merged them is caught.
+    expect($calls)->toBe([['git', 'commit', '-m', 'no changes here']]);
 });
 
 it('still surfaces stderr when present', function () {
     $git = new GitService(function (array $command, string $cwd): array {
         return match ($command) {
-            ['git', 'add', '-A'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
             ['git', 'commit', '-m', 'broken repo'] => [
                 'stdout' => '',
                 'stderr' => "fatal: not a git repository\n",
@@ -112,6 +117,58 @@ it('still surfaces stderr when present', function () {
 
     expect(fn () => $git->commit('/tmp/repo', 'broken repo'))
         ->toThrow(RuntimeException::class, 'fatal: not a git repository');
+});
+
+it('stageAll runs git add -A and nothing else', function () {
+    $calls = [];
+    $git = new GitService(function (array $command, string $cwd) use (&$calls): array {
+        $calls[] = $command;
+
+        return match ($command) {
+            ['git', 'add', '-A'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
+            default => throw new RuntimeException('Unexpected command: '.implode(' ', $command)),
+        };
+    });
+
+    $git->stageAll('/tmp/repo');
+
+    expect($calls)->toBe([['git', 'add', '-A']]);
+});
+
+it('hasStagedDiffVsBase returns false when the staged tree matches base', function () {
+    $git = new GitService(fn (array $command, string $cwd): array => match ($command) {
+        ['git', 'diff', '--cached', '--quiet', 'main'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 0],
+        default => throw new RuntimeException('Unexpected command: '.implode(' ', $command)),
+    });
+
+    expect($git->hasStagedDiffVsBase('/tmp/repo', 'main'))->toBeFalse();
+});
+
+it('hasStagedDiffVsBase returns true when the staged tree differs from base', function () {
+    $git = new GitService(fn (array $command, string $cwd): array => match ($command) {
+        ['git', 'diff', '--cached', '--quiet', 'main'] => ['stdout' => '', 'stderr' => '', 'exitCode' => 1],
+        default => throw new RuntimeException('Unexpected command: '.implode(' ', $command)),
+    });
+
+    expect($git->hasStagedDiffVsBase('/tmp/repo', 'main'))->toBeTrue();
+});
+
+it('hasStagedDiffVsBase throws on unexpected git exit codes instead of silently skipping', function () {
+    // Caught by claude/codex/copilot: exit 128 (unknown base ref, etc.) used
+    // to map to "no diff" → orchestrator would untag the issue, delete the
+    // branch, and comment "Executor produced no changes" while the real bug
+    // was a typo in base_branch.
+    $git = new GitService(fn (array $command, string $cwd): array => match ($command) {
+        ['git', 'diff', '--cached', '--quiet', 'no-such-base'] => [
+            'stdout' => '',
+            'stderr' => "fatal: bad revision 'no-such-base'\n",
+            'exitCode' => 128,
+        ],
+        default => throw new RuntimeException('Unexpected command: '.implode(' ', $command)),
+    });
+
+    expect(fn () => $git->hasStagedDiffVsBase('/tmp/repo', 'no-such-base'))
+        ->toThrow(RuntimeException::class, "bad revision 'no-such-base'");
 });
 
 it('ignores a repo-local .copland.yml file when checking for dirtiness', function () {
