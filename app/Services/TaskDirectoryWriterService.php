@@ -58,7 +58,7 @@ class TaskDirectoryWriterService
             $existing = (string) file_get_contents($statusPath);
             $body = $this->extractBody($existing).$newRow;
         } else {
-            $body = "## Transitions\n\n| Timestamp (UTC)        | State     |\n|------------------------|-----------|\n".$newRow;
+            $body = self::freshTransitionsBody().$newRow;
         }
 
         $content = "---\n{$frontmatter}---\n\n{$body}";
@@ -98,7 +98,7 @@ class TaskDirectoryWriterService
             $existing = (string) file_get_contents($statusPath);
             $body = $this->extractBody($existing).$newRow;
         } else {
-            $body = "## Transitions\n\n| Timestamp (UTC)        | State     |\n|------------------------|-----------|\n".$newRow;
+            $body = self::freshTransitionsBody().$newRow;
         }
 
         $content = "---\n{$frontmatter}---\n\n{$body}";
