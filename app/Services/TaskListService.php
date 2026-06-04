@@ -375,7 +375,12 @@ class TaskListService
 
         $tmp = $file.'.tmp';
         if (@file_put_contents($tmp, json_encode($cache, JSON_UNESCAPED_SLASHES)) !== false) {
-            @rename($tmp, $file);
+            // writeCache runs whenever the cache TTL has expired (default 120s) and
+            // classify() succeeds — a persistent rename failure (cross-device move,
+            // permissions) would accrue a new orphan .tmp every refresh cycle.
+            if (! @rename($tmp, $file)) {
+                @unlink($tmp);
+            }
         }
     }
 }

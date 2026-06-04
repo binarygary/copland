@@ -101,6 +101,43 @@ it('serves cached issues and overlays run-store state without hitting GitHub', f
     }
 });
 
+it('cleans up the .tmp cache file when rename fails', function () {
+    $slug = 'binarygary/copland';
+    [$home, $repoPath, $cleanup] = setupTaskListHome($slug, 'repo');
+
+    try {
+        // Force rename($tmp, $file) to fail by pre-creating the cache *path* as a
+        // non-empty directory — POSIX rename can't overwrite that with a file.
+        $cacheDir = $home.'/.copland';
+        mkdir($cacheDir, 0700, true);
+        mkdir($cacheDir.'/issues-cache.json', 0700, true);
+        file_put_contents($cacheDir.'/issues-cache.json/sentinel', 'x');
+
+        // Real exercise of the cleanup path: classify() must succeed so $dirty is
+        // set and writeCache() actually runs. Earlier the factory threw, which
+        // sent build() into its catch arm without dirtying the cache — the .tmp
+        // assertion then passed vacuously regardless of whether the unlink existed.
+        $github = Mockery::mock(\App\Services\GitHubService::class);
+        $github->shouldReceive('getIssues')->andReturn([]);
+
+        $service = new TaskListService(
+            config: new GlobalConfig,
+            githubFactory: fn () => $github,
+            cacheTtlSeconds: 120,
+            clock: fn (): int => 1_700_000_000,
+        );
+
+        $service->build();
+
+        // No .tmp residue: writeCache succeeded in writing the .tmp, failed to
+        // rename it (target is a directory), and must have unlinked it.
+        expect(file_exists($cacheDir.'/issues-cache.json.tmp'))->toBeFalse();
+    } finally {
+        Mockery::close();
+        $cleanup();
+    }
+});
+
 it('uses repo-qualified ids when different repos cache the same issue number', function () {
     $originalHome = $_SERVER['HOME'] ?? null;
     $home = sys_get_temp_dir().'/copland-tasklist-'.uniqid();
