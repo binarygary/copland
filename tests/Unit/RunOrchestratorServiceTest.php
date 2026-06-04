@@ -59,6 +59,7 @@ it('completes the happy path and opens a draft PR', function () {
 
     $git = Mockery::mock(GitService::class);
     $git->shouldReceive('commit')->once()->with('/tmp/worktree', 'agent: implement #42 Fix bug');
+    $git->shouldReceive('hasCommitsAheadOfBase')->once()->andReturn(true);
     $git->shouldReceive('push')->once()->with('/tmp/worktree', 'feature/test-branch');
 
     $executor = Mockery::mock(ClaudeExecutorService::class);
@@ -389,6 +390,7 @@ it('runs a requested issue end-to-end without invoking the selector', function (
 
     $git = Mockery::mock(GitService::class);
     $git->shouldReceive('commit')->once();
+    $git->shouldReceive('hasCommitsAheadOfBase')->once()->andReturn(true);
     $git->shouldReceive('push')->once();
 
     $executor = Mockery::mock(ClaudeExecutorService::class);
@@ -418,6 +420,75 @@ it('runs a requested issue end-to-end without invoking the selector', function (
     expect($result->selectedTaskId)->toBe(42);
     // No selector ran, so no selector usage is attributed to the run.
     expect($result->selectorUsage)->toBeNull();
+});
+
+it('skips cleanly when the committed branch has no commits ahead of base', function () {
+    $stores = makeStores();
+    $issue = makeIssue();
+    $selection = new SelectionResult('accept', 42, 'looks good', [], usage('selector'));
+    $plan = makeOrchestratorPlan(usage: usage('planner'));
+    $execution = executionResult(success: true, summary: 'Implemented successfully');
+    $verification = new VerificationResult(true, []);
+
+    $taskSource = Mockery::mock(TaskSource::class);
+    $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
+    // Critical: no openDraftPr, no push, no removeTag — the run must short-circuit.
+    $taskSource->shouldNotReceive('openDraftPr');
+    $taskSource->shouldNotReceive('removeTag');
+    $taskSource->shouldReceive('addComment')->andReturnNull();
+
+    $prefilter = Mockery::mock(IssuePrefilterService::class);
+    $prefilter->shouldReceive('filter')->once()->andReturn(new PrefilterResult([$issue], []));
+
+    $selector = Mockery::mock(ClaudeSelectorService::class);
+    $selector->shouldReceive('selectTask')->once()->andReturn($selection);
+
+    $planner = Mockery::mock(ClaudePlannerService::class);
+    $planner->shouldReceive('planTask')->once()->andReturn($plan);
+
+    $validator = Mockery::mock(PlanValidatorService::class);
+    $validator->shouldReceive('validate')->once()->andReturn([]);
+
+    $workspace = Mockery::mock(WorkspaceService::class);
+    $workspace->shouldReceive('create')->once()->andReturn('/tmp/worktree');
+    $workspace->shouldReceive('cleanup')->once();
+
+    $git = Mockery::mock(GitService::class);
+    $git->shouldReceive('commit')->once();
+    $git->shouldReceive('hasCommitsAheadOfBase')->once()->with('/tmp/worktree', 'develop')->andReturn(false);
+    // Orphan-branch cleanup: switch back to base, delete the agent branch locally.
+    $git->shouldReceive('switchBranch')->once()->with('/tmp/worktree', 'develop');
+    $git->shouldReceive('deleteLocalBranch')->once()->with('/tmp/worktree', 'feature/test-branch');
+    // No push, no force, nothing that touches origin.
+    $git->shouldNotReceive('push');
+
+    $executor = Mockery::mock(ClaudeExecutorService::class);
+    $executor->shouldReceive('executeWithRepoProfile')->once()->andReturn($execution);
+
+    $verifier = Mockery::mock(VerificationService::class);
+    $verifier->shouldReceive('verify')->once()->andReturn($verification);
+
+    $service = makeOrchestrator(
+        taskSource: $taskSource,
+        prefilter: $prefilter,
+        selector: $selector,
+        planner: $planner,
+        validator: $validator,
+        workspace: $workspace,
+        git: $git,
+        executor: $executor,
+        verifier: $verifier,
+        planArtifactStore: $stores['plan'],
+        runLogStore: $stores['log'],
+    );
+
+    $result = $service->run('acme/repo', ['repo_path' => '/repos/acme', 'required_labels' => ['agent-ready'], 'base_branch' => 'develop']);
+
+    expect($result->status)->toBe('skipped');
+    expect($result->failureReason)->toBe('Executor produced no changes');
+    expect($result->prUrl)->toBeNull();
+    expect($result->prNumber)->toBeNull();
+    expect($stores['log']->payloads[0]['status'])->toBe('skipped');
 });
 
 it('fails when the requested issue is not an accepted candidate', function () {

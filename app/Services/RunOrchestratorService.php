@@ -339,6 +339,47 @@ class RunOrchestratorService
             // Step 10: Commit and push
             $this->pushLog('[8/8] Committing, pushing, and opening draft PR');
             $this->git->commit($workspacePath, "agent: implement #{$selectedIssue['number']} {$selectedIssue['title']}");
+
+            // No-diff guard: even after a "successful" execution + verification, the
+            // committed branch can end up identical to base (executor cancelled its own
+            // change via Bash, normalization scrubbed the diff, etc.). Pushing in that
+            // state leaves an orphan branch and a 422 from the PR API ("No commits between
+            // base and head"). End cleanly as 'skipped' instead.
+            $baseBranch = (string) ($repoProfile['base_branch'] ?? 'main');
+
+            if (! $this->git->hasCommitsAheadOfBase($workspacePath, $baseBranch)) {
+                $reason = 'Executor produced no changes';
+                $this->pushLog("      Branch is identical to {$baseBranch} — no PR will be opened");
+
+                try {
+                    $this->git->switchBranch($workspacePath, $baseBranch);
+                    $this->git->deleteLocalBranch($workspacePath, $plan->branchName);
+                    $this->pushLog("      Cleaned up orphan branch {$plan->branchName}");
+                } catch (Throwable $e) {
+                    $this->pushLog("      Warning: failed to clean up orphan branch: {$e->getMessage()}");
+                }
+
+                $this->comment($repo, $selectedIssue['number'], "⏭ **Skipped** — {$reason}.");
+
+                $result = new RunResult(
+                    status: 'skipped',
+                    prUrl: null,
+                    prNumber: null,
+                    selectedIssueTitle: $selectedIssue['title'],
+                    selectedTaskId: $selectedIssue['number'],
+                    failureReason: $reason,
+                    log: $this->log,
+                    startedAt: $startedAt,
+                    finishedAt: date(DATE_ATOM),
+                    selectorUsage: $selectorUsage,
+                    plannerUsage: $plan->usage,
+                    executorUsage: $executionResult->usage,
+                    executorDurationSeconds: $executionResult->durationSeconds,
+                );
+
+                return $result;
+            }
+
             $this->git->push($workspacePath, $plan->branchName);
             $this->pushLog("      Pushed branch {$plan->branchName}");
 

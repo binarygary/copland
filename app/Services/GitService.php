@@ -85,6 +85,27 @@ class GitService
         );
     }
 
+    public function hasCommitsAheadOfBase(string $workspacePath, string $baseBranch): bool
+    {
+        $output = $this->output(
+            ['git', 'rev-list', '--count', "{$baseBranch}..HEAD"],
+            $workspacePath,
+            "git rev-list failed against base '{$baseBranch}'"
+        );
+
+        return (int) trim($output) > 0;
+    }
+
+    public function switchBranch(string $workspacePath, string $branch): void
+    {
+        $this->run(['git', 'switch', $branch], $workspacePath, "git switch failed for branch '{$branch}'");
+    }
+
+    public function deleteLocalBranch(string $workspacePath, string $branch): void
+    {
+        $this->run(['git', 'branch', '-D', $branch], $workspacePath, "git branch -D failed for branch '{$branch}'");
+    }
+
     private function hasUncommittedChanges(string $repoPath): bool
     {
         $output = $this->output(['git', 'status', '--porcelain'], $repoPath, 'git status failed');
