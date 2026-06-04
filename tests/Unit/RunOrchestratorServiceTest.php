@@ -58,8 +58,9 @@ it('completes the happy path and opens a draft PR', function () {
     $workspace->shouldReceive('cleanup')->once()->with('/repos/acme', '/tmp/worktree');
 
     $git = Mockery::mock(GitService::class);
+    $git->shouldReceive('stageAll')->once()->with('/tmp/worktree');
+    $git->shouldReceive('hasStagedDiffVsBase')->once()->andReturn(true);
     $git->shouldReceive('commit')->once()->with('/tmp/worktree', 'agent: implement #42 Fix bug');
-    $git->shouldReceive('hasCommitsAheadOfBase')->once()->andReturn(true);
     $git->shouldReceive('push')->once()->with('/tmp/worktree', 'feature/test-branch');
 
     $executor = Mockery::mock(ClaudeExecutorService::class);
@@ -83,6 +84,7 @@ it('completes the happy path and opens a draft PR', function () {
     );
 
     $snapshot = new RunProgressSnapshot;
+    // base_branch must match the openDraftPr mock's expected arg ('trunk') from PR #44.
     $result = $service->run('acme/repo', ['repo_path' => '/repos/acme', 'required_labels' => ['agent-ready'], 'base_branch' => 'trunk'], snapshot: $snapshot);
 
     expect($result->status)->toBe('succeeded');
@@ -389,8 +391,9 @@ it('runs a requested issue end-to-end without invoking the selector', function (
     $workspace->shouldReceive('cleanup')->once()->with(Mockery::any(), '/tmp/worktree');
 
     $git = Mockery::mock(GitService::class);
+    $git->shouldReceive('stageAll')->once();
+    $git->shouldReceive('hasStagedDiffVsBase')->once()->andReturn(true);
     $git->shouldReceive('commit')->once();
-    $git->shouldReceive('hasCommitsAheadOfBase')->once()->andReturn(true);
     $git->shouldReceive('push')->once();
 
     $executor = Mockery::mock(ClaudeExecutorService::class);
@@ -422,7 +425,7 @@ it('runs a requested issue end-to-end without invoking the selector', function (
     expect($result->selectorUsage)->toBeNull();
 });
 
-it('skips cleanly when the committed branch has no commits ahead of base', function () {
+it('skips cleanly when the staged tree is identical to base', function () {
     $stores = makeStores();
     $issue = makeIssue();
     $selection = new SelectionResult('accept', 42, 'looks good', [], usage('selector'));
@@ -432,9 +435,11 @@ it('skips cleanly when the committed branch has no commits ahead of base', funct
 
     $taskSource = Mockery::mock(TaskSource::class);
     $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
-    // Critical: no openDraftPr, no push, no removeTag — the run must short-circuit.
+    // Critical: no openDraftPr, no push — the run must short-circuit at the diff
+    // check. removeTag *must* fire on the skip path so the next cron tick doesn't
+    // re-select and re-skip the same issue forever.
     $taskSource->shouldNotReceive('openDraftPr');
-    $taskSource->shouldNotReceive('removeTag');
+    $taskSource->shouldReceive('removeTag')->once()->with('acme/repo', 42, 'agent-ready');
     $taskSource->shouldReceive('addComment')->andReturnNull();
 
     $prefilter = Mockery::mock(IssuePrefilterService::class);
@@ -454,12 +459,14 @@ it('skips cleanly when the committed branch has no commits ahead of base', funct
     $workspace->shouldReceive('cleanup')->once();
 
     $git = Mockery::mock(GitService::class);
-    $git->shouldReceive('commit')->once();
-    $git->shouldReceive('hasCommitsAheadOfBase')->once()->with('/tmp/worktree', 'develop')->andReturn(false);
-    // Orphan-branch cleanup: switch back to base, delete the agent branch locally.
+    // Pre-commit guard ordering: stage first, then content diff vs base, then
+    // reset+switch+delete cleanup. commit/push must NEVER be called.
+    $git->shouldReceive('stageAll')->once()->with('/tmp/worktree');
+    $git->shouldReceive('hasStagedDiffVsBase')->once()->with('/tmp/worktree', 'develop')->andReturn(false);
+    $git->shouldReceive('resetHard')->once()->with('/tmp/worktree');
     $git->shouldReceive('switchBranch')->once()->with('/tmp/worktree', 'develop');
     $git->shouldReceive('deleteLocalBranch')->once()->with('/tmp/worktree', 'feature/test-branch');
-    // No push, no force, nothing that touches origin.
+    $git->shouldNotReceive('commit');
     $git->shouldNotReceive('push');
 
     $executor = Mockery::mock(ClaudeExecutorService::class);

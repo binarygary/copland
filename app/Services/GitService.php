@@ -70,9 +70,17 @@ class GitService
         return $total;
     }
 
-    public function commit(string $workspacePath, string $message): void
+    public function stageAll(string $workspacePath): void
     {
         $this->run(['git', 'add', '-A'], $workspacePath, 'git add failed');
+    }
+
+    public function commit(string $workspacePath, string $message): void
+    {
+        // Caller is responsible for staging via stageAll() first. Splitting these
+        // lets the orchestrator stage, then ask hasStagedDiffVsBase, then either
+        // commit or skip cleanly — without ever calling `git commit` on an empty
+        // index (which exits non-zero and used to be reported as a crash).
         $this->run(['git', 'commit', '-m', $message], $workspacePath, 'git commit failed');
     }
 
@@ -85,15 +93,24 @@ class GitService
         );
     }
 
-    public function hasCommitsAheadOfBase(string $workspacePath, string $baseBranch): bool
+    public function hasStagedDiffVsBase(string $workspacePath, string $baseBranch): bool
     {
-        $output = $this->output(
-            ['git', 'rev-list', '--count', "{$baseBranch}..HEAD"],
+        // `git diff --cached --quiet <base>` exits 0 when the index matches base's
+        // tree and 1 when there's a diff. We compare content, not commit count —
+        // rev-list-based checks fire green even when the committed tree happens
+        // to be identical to base (revert chain, --allow-empty, normalization
+        // wiped the diff), letting the PR API reject the push with 422.
+        $result = $this->execute(
+            ['git', 'diff', '--cached', '--quiet', $baseBranch],
             $workspacePath,
-            "git rev-list failed against base '{$baseBranch}'"
         );
 
-        return (int) trim($output) > 0;
+        return $result['exitCode'] === 1;
+    }
+
+    public function resetHard(string $workspacePath): void
+    {
+        $this->run(['git', 'reset', '--hard', 'HEAD'], $workspacePath, 'git reset --hard failed');
     }
 
     public function switchBranch(string $workspacePath, string $branch): void

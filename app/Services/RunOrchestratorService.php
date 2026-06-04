@@ -336,22 +336,35 @@ class RunOrchestratorService
 
             $this->pushLog('      Verification passed');
 
-            // Step 10: Commit and push
-            $this->pushLog('[8/8] Committing, pushing, and opening draft PR');
-            $this->git->commit($workspacePath, "agent: implement #{$selectedIssue['number']} {$selectedIssue['title']}");
+            // Step 10: Stage, then either commit/push or skip cleanly
+            $this->pushLog('[8/8] Staging, committing, pushing, and opening draft PR');
 
-            // No-diff guard: even after a "successful" execution + verification, the
-            // committed branch can end up identical to base (executor cancelled its own
-            // change via Bash, normalization scrubbed the diff, etc.). Pushing in that
-            // state leaves an orphan branch and a 422 from the PR API ("No commits between
-            // base and head"). End cleanly as 'skipped' instead.
-            $baseBranch = (string) ($repoProfile['base_branch'] ?? 'main');
+            // base_branch is required: a silent fallback to 'main' on a repo whose
+            // real base is master/develop would compare against the wrong tree and
+            // either pass spuriously or break the rev parse with a confusing error.
+            if (! isset($repoProfile['base_branch']) || ! is_string($repoProfile['base_branch']) || trim($repoProfile['base_branch']) === '') {
+                throw new \RuntimeException("repoProfile['base_branch'] is required for PR creation");
+            }
+            $baseBranch = $repoProfile['base_branch'];
 
-            if (! $this->git->hasCommitsAheadOfBase($workspacePath, $baseBranch)) {
+            // Stage everything first so the diff check sees the full picture
+            // (verifier counts untracked files via `git status --porcelain` but
+            // those wouldn't show up in `git diff` until staged).
+            $this->git->stageAll($workspacePath);
+
+            // No-diff guard runs BEFORE commit. `git commit` exits non-zero on an
+            // empty index — the previous post-commit check let that throw and got
+            // reported as a crash. A content diff (not commit count) catches the
+            // case where the staged tree is identical to base (normalization
+            // wiped the diff, executor's edit was a no-op, etc.).
+            if (! $this->git->hasStagedDiffVsBase($workspacePath, $baseBranch)) {
                 $reason = 'Executor produced no changes';
-                $this->pushLog("      Branch is identical to {$baseBranch} — no PR will be opened");
+                $this->pushLog("      Staged tree is identical to {$baseBranch} — no PR will be opened");
 
+                // Drop the agent branch locally and switch back to base. resetHard
+                // first because staged changes block `git switch`.
                 try {
+                    $this->git->resetHard($workspacePath);
                     $this->git->switchBranch($workspacePath, $baseBranch);
                     $this->git->deleteLocalBranch($workspacePath, $plan->branchName);
                     $this->pushLog("      Cleaned up orphan branch {$plan->branchName}");
@@ -359,7 +372,19 @@ class RunOrchestratorService
                     $this->pushLog("      Warning: failed to clean up orphan branch: {$e->getMessage()}");
                 }
 
-                $this->comment($repo, $selectedIssue['number'], "⏭ **Skipped** — {$reason}.");
+                // Untag the issue so the next cron tick doesn't re-select it and
+                // re-skip in a loop. The on-issue comment carries the reason so
+                // the user can re-add the label after addressing it.
+                foreach ($repoProfile['required_labels'] ?? ['agent-ready'] as $label) {
+                    try {
+                        $this->taskSource->removeTag($repo, $selectedIssue['number'], $label);
+                        $this->pushLog("      Removed issue label {$label} (no-diff skip)");
+                    } catch (Throwable $e) {
+                        $this->pushLog("      Warning: failed to remove label {$label}: {$e->getMessage()}");
+                    }
+                }
+
+                $this->comment($repo, $selectedIssue['number'], "⏭ **Skipped** — {$reason}.\n\nThe agent ran end-to-end but the resulting tree is identical to `{$baseBranch}`. Re-add the agent-ready label after addressing the underlying issue.");
 
                 $result = new RunResult(
                     status: 'skipped',
@@ -380,6 +405,7 @@ class RunOrchestratorService
                 return $result;
             }
 
+            $this->git->commit($workspacePath, "agent: implement #{$selectedIssue['number']} {$selectedIssue['title']}");
             $this->git->push($workspacePath, $plan->branchName);
             $this->pushLog("      Pushed branch {$plan->branchName}");
 
