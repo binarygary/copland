@@ -221,7 +221,10 @@ class PlanCommand extends Command
 
     private function probeOllama(string $baseUrl): void
     {
-        $probeUrl = rtrim(preg_replace('#/v1$#i', '', $baseUrl), '/').'/api/tags';
+        // Trim trailing slashes BEFORE stripping /v1 — otherwise "http://host:11434/v1/"
+        // (trailing slash) leaves /v1/ in place and we'd probe /v1/api/tags, which
+        // is the wrong endpoint and fails even when Ollama is healthy. (Copilot #56)
+        $probeUrl = rtrim(preg_replace('#/v1$#i', '', rtrim($baseUrl, '/')), '/').'/api/tags';
 
         $httpClient = new Client(['timeout' => 3]);
 
