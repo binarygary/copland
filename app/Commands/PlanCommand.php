@@ -12,15 +12,20 @@ use App\Services\IssuePrefilterService;
 use App\Services\PlanValidatorService;
 use App\Support\AnthropicCostEstimator;
 use App\Support\LlmClientFactory;
+use App\Support\OpenAiCompatClient;
 use App\Support\PlanArtifactStore;
 use App\Support\ProgressReporter;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use LaravelZero\Framework\Commands\Command;
+use Symfony\Component\Process\ExecutableFinder;
+use Throwable;
 
 class PlanCommand extends Command
 {
     protected $signature = 'plan {repo? : GitHub repo in owner/repo format}';
 
-    protected $description = 'Run Claude selector and planner and display the contract';
+    protected $description = 'Run the configured selector + planner and display the contract';
 
     public function handle(): void
     {
@@ -40,6 +45,12 @@ class PlanCommand extends Command
         $selectorClient = LlmClientFactory::forStage('selector', $globalConfig, $repoConfig);
         $plannerClient = LlmClientFactory::forStage('planner', $globalConfig, $repoConfig);
 
+        // Mirror RunCommand's pre-flight checks so non-Anthropic providers fail
+        // fast with an actionable message instead of an obscure runtime error
+        // inside the selector/planner call. Skipped: executor binary checks (we
+        // don't run the executor here).
+        $this->runProviderHealthChecks($globalConfig, $repoConfig);
+
         $repoProfile = [
             'repo_summary' => $repoConfig->repoSummary(),
             'conventions' => $repoConfig->conventions(),
@@ -57,7 +68,7 @@ class PlanCommand extends Command
         $prefiltered = $prefilter->filter($issues);
         $this->line($progress->detail(count($prefiltered->accepted).' accepted, '.count($prefiltered->rejected).' rejected'));
 
-        $this->line($progress->step('Run Claude selector'));
+        $this->line($progress->step('Run selector'));
         $selector = new ClaudeSelectorService($globalConfig, $selectorClient);
         $selection = $selector->selectTask($repoProfile, $prefiltered->accepted);
 
@@ -85,7 +96,7 @@ class PlanCommand extends Command
         }
 
         $this->line($progress->detail("Selected issue #{$selectedIssue['number']}: {$selectedIssue['title']}"));
-        $this->line($progress->step('Run Claude planner'));
+        $this->line($progress->step('Run planner'));
         $planner = new ClaudePlannerService($globalConfig, $plannerClient);
         $plan = $planner->planTask($repoProfile, $selectedIssue);
 
@@ -140,5 +151,80 @@ class PlanCommand extends Command
         $this->line('  - Planner: '.AnthropicCostEstimator::format($plan->usage));
         $total = AnthropicCostEstimator::combine($selection->usage, $plan->usage);
         $this->line('  - Total: '.AnthropicCostEstimator::format($total));
+    }
+
+    /**
+     * Mirrors RunCommand's pre-flight checks for selector/planner stages: Ollama
+     * reachability, Ollama model-capability warning, and claude-code/codex
+     * binary presence. Failures here surface with actionable messages instead
+     * of a vague API/CLI error inside the selector or planner call.
+     */
+    private function runProviderHealthChecks(GlobalConfig $globalConfig, RepoConfig $repoConfig): void
+    {
+        $ollamaStages = LlmClientFactory::ollamaStageConfigs($globalConfig, $repoConfig);
+        $probedUrls = [];
+        foreach ($ollamaStages as $entry) {
+            $url = $entry['base_url'];
+            if (! in_array($url, $probedUrls, true)) {
+                $this->probeOllama($url);
+                $probedUrls[] = $url;
+            }
+        }
+
+        $warnedModels = [];
+        foreach ($ollamaStages as $entry) {
+            $model = $entry['model'] ?? '';
+            if ($model === '' || in_array($model, $warnedModels, true)) {
+                continue;
+            }
+            $normalized = str_contains($model, ':') ? $model : $model.':latest';
+            if (! in_array($model, OpenAiCompatClient::TOOL_CAPABLE_MODELS, true)
+                && ! in_array($normalized, OpenAiCompatClient::TOOL_CAPABLE_MODELS, true)) {
+                $this->warn("Warning: Ollama model '{$model}' is not on the known tool-capable list. Tool use may fail.");
+            }
+            $warnedModels[] = $model;
+        }
+
+        $checkedBinaries = [];
+        $finder = new ExecutableFinder;
+
+        foreach (LlmClientFactory::claudeCodeStageConfigs($globalConfig, $repoConfig) as $entry) {
+            $binary = $entry['binary_path'] ?? 'claude';
+            if (in_array($binary, $checkedBinaries, true)) {
+                continue;
+            }
+            $checkedBinaries[] = $binary;
+
+            if ($finder->find($binary) === null) {
+                $this->warn("Warning: Claude Code binary '{$binary}' not found on PATH. The claude-code provider will fail at runtime. Install with `npm install -g @anthropic-ai/claude-code` or set `binary_path` in your llm config.");
+            }
+        }
+
+        foreach (LlmClientFactory::codexStageConfigs($globalConfig, $repoConfig) as $entry) {
+            $binary = $entry['binary_path'] ?? 'codex';
+            if (in_array($binary, $checkedBinaries, true)) {
+                continue;
+            }
+            $checkedBinaries[] = $binary;
+
+            if ($finder->find($binary) === null) {
+                $this->warn("Warning: Codex binary '{$binary}' not found on PATH. The codex provider will fail at runtime. Install the Codex CLI or set `binary_path` in your llm config.");
+            }
+        }
+    }
+
+    private function probeOllama(string $baseUrl): void
+    {
+        $probeUrl = rtrim(preg_replace('#/v1$#i', '', $baseUrl), '/').'/api/tags';
+
+        $httpClient = new Client(['timeout' => 3]);
+
+        try {
+            $httpClient->get($probeUrl);
+        } catch (ConnectException) {
+            throw new \RuntimeException("Ollama is not reachable at {$baseUrl}. Is it running?");
+        } catch (Throwable $e) {
+            throw new \RuntimeException("Ollama probe failed at {$baseUrl}: ".$e->getMessage());
+        }
     }
 }
