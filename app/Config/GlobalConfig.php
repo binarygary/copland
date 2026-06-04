@@ -158,7 +158,14 @@ YAML;
      */
     private function detectFallbackRepos(): array
     {
-        $currentPath = getcwd() ?: '.';
+        // When getcwd() fails, there's no meaningful workspace to auto-detect
+        // and falling back to '.' would surface a relative path that breaks
+        // downstream consumers expecting an absolute workspace root.
+        $currentPath = getcwd();
+        if ($currentPath === false) {
+            return [];
+        }
+
         $detected = $this->detectRepoSlugAtPath($currentPath);
 
         if ($detected === null) {
