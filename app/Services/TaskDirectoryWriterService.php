@@ -58,7 +58,7 @@ class TaskDirectoryWriterService
             $existing = (string) file_get_contents($statusPath);
             $body = $this->extractBody($existing).$newRow;
         } else {
-            $body = "## Transitions\n\n| Timestamp (UTC)        | State     |\n|------------------------|-----------|\n".$newRow;
+            $body = self::freshTransitionsBody().$newRow;
         }
 
         $content = "---\n{$frontmatter}---\n\n{$body}";
@@ -98,7 +98,7 @@ class TaskDirectoryWriterService
             $existing = (string) file_get_contents($statusPath);
             $body = $this->extractBody($existing).$newRow;
         } else {
-            $body = "## Transitions\n\n| Timestamp (UTC)        | State     |\n|------------------------|-----------|\n".$newRow;
+            $body = self::freshTransitionsBody().$newRow;
         }
 
         $content = "---\n{$frontmatter}---\n\n{$body}";
@@ -212,15 +212,22 @@ class TaskDirectoryWriterService
     {
         // Strip leading "---\n" if present, then strip frontmatter through the closing "---\n",
         // then strip the single blank line we always emit after the closing delimiter.
+        //
+        // If either delimiter is missing (truncation, partial write, manual edit),
+        // returning $existing made writeStatus prepend a fresh frontmatter block in front
+        // of the malformed file — each subsequent call then doubled the trapped content,
+        // so the file size compounded and the embedded "---" markers became
+        // indistinguishable. Reset to a fresh transitions table instead so the next
+        // write produces a clean status.md.
         if (! str_starts_with($existing, "---\n")) {
-            return $existing;
+            return self::freshTransitionsBody();
         }
 
         $afterOpen = substr($existing, 4);
         $closePos = strpos($afterOpen, "\n---\n");
 
         if ($closePos === false) {
-            return $existing;
+            return self::freshTransitionsBody();
         }
 
         $body = substr($afterOpen, $closePos + 5);
@@ -230,5 +237,10 @@ class TaskDirectoryWriterService
         }
 
         return $body;
+    }
+
+    private static function freshTransitionsBody(): string
+    {
+        return "## Transitions\n\n| Timestamp (UTC)        | State     |\n|------------------------|-----------|\n";
     }
 }

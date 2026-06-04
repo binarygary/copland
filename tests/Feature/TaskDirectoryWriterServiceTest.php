@@ -221,6 +221,69 @@ it('writeStatus produces an 8-row transitions table across the full lifecycle', 
 
 });
 
+it('writeStatus resets a malformed status.md instead of doubling its content', function () {
+    $home = createTaskWriterTempHome();
+
+    // Seed a status.md with no frontmatter delimiters at all. Before the fix,
+    // extractBody returned the entire malformed file, so the next writeStatus call
+    // would re-embed the whole garbage payload (plus a fresh frontmatter block in
+    // front of it). Each subsequent call then doubled the trapped content.
+    $statusPath = $home.'/.copland/tasks/owner__repo/200/status.md';
+    mkdir(dirname($statusPath), 0700, true);
+    $garbage = str_repeat("garbage line with no --- delimiter at all\n", 50);
+    file_put_contents($statusPath, $garbage);
+
+    $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T20:00:00Z');
+
+    // Same state twice: frontmatter length stays identical so the file-size delta
+    // is exactly one transitions row. Non-terminal writeStatus calls are not
+    // idempotent — each emits a new row — so this still exercises the append path.
+    $writer->writeStatus('owner/repo', 200, 'new');
+    $sizeAfterFirst = filesize($statusPath);
+
+    $writer->writeStatus('owner/repo', 200, 'new');
+    // PHP caches stat() results — clearstatcache so the second filesize()
+    // doesn't return the cached pre-second-write value (Copilot inline finding).
+    clearstatcache(true, $statusPath);
+    $sizeAfterSecond = filesize($statusPath);
+
+    $rowOverhead = strlen("| 2026-05-27T20:00:00Z | new |\n");
+
+    // The garbage payload must be fully discarded — file size grows by one row only.
+    $contents = (string) file_get_contents($statusPath);
+    expect($contents)->not->toContain('garbage line');
+    expect($sizeAfterSecond - $sizeAfterFirst)->toBe($rowOverhead);
+});
+
+it('writeRunStatus resets a malformed run status.md instead of doubling its content', function () {
+    $home = createTaskWriterTempHome();
+
+    $runId = '2026-05-27T19-15-22Z';
+    // extractBody is shared between writeStatus and writeRunStatus, so the same
+    // reset behavior must hold on the per-run path — without this, a malformed
+    // run status.md (a partial write under ~/.copland/tasks/.../runs/) would
+    // compound its garbage on every subsequent writeRunStatus call.
+    $statusPath = $home.'/.copland/tasks/owner__repo/201/runs/'.$runId.'/status.md';
+    mkdir(dirname($statusPath), 0700, true);
+    $garbage = str_repeat("malformed run status line with no --- delimiter\n", 50);
+    file_put_contents($statusPath, $garbage);
+
+    $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T21:00:00Z');
+
+    $writer->writeRunStatus('owner/repo', 201, $runId, 'new');
+    $sizeAfterFirst = filesize($statusPath);
+
+    $writer->writeRunStatus('owner/repo', 201, $runId, 'new');
+    clearstatcache(true, $statusPath);
+    $sizeAfterSecond = filesize($statusPath);
+
+    $rowOverhead = strlen("| 2026-05-27T21:00:00Z | new |\n");
+
+    $contents = (string) file_get_contents($statusPath);
+    expect($contents)->not->toContain('malformed run status line');
+    expect($sizeAfterSecond - $sizeAfterFirst)->toBe($rowOverhead);
+});
+
 it('writeBlockedIfNotTerminal is a no-op after pr_open', function () {
     $home = createTaskWriterTempHome();
 
