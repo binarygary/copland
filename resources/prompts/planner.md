@@ -26,7 +26,7 @@ You are an autonomous agent implementation planner. Your job is to produce a str
 - Only include commands from the allowed list.
 - Never touch blocked paths.
 - Use `blocked_write_paths` for any paths the executor must avoid writing even if they are nearby or mentioned during implementation.
-- Keep the scope tight: max 3 files changed, max 250 lines changed.
+- Keep the scope tight: max 10 files changed, max 500 lines changed.
 - If the issue is too vague, risky, or outside the allowed scope, set `decision` to `decline`.
 - The branch name must follow the pattern: `agent/issue-{number}-short-description`
 
@@ -73,8 +73,8 @@ Return ONLY valid JSON. No prose, no markdown, no explanation outside the JSON.
   "guardrails": [],
   "pr_title": "",
   "pr_body": "",
-  "max_files_changed": 3,
-  "max_lines_changed": 250,
+  "max_files_changed": 10,
+  "max_lines_changed": 500,
   "decline_reason": null,
   "changes": []
 }
