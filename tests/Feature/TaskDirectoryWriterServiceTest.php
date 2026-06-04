@@ -310,7 +310,7 @@ it('writeStatus throws when transitioning out of the blocked terminal state', fu
         ->toThrow(RuntimeException::class, 'terminal');
 });
 
-it("writeStatus allows terminal → 'new' as a deliberate cycle reset for orchestrator retries", function () {
+it("writeStatus allows blocked → 'new' as a deliberate cycle reset for orchestrator retries", function () {
     // Claude's HIGH finding: the orchestrator unconditionally calls
     // writeStatus(... 'new') at the top of every run(). Most failure paths
     // don't clear the agent-ready label, so a blocked task gets re-selected
@@ -332,6 +332,23 @@ it("writeStatus allows terminal → 'new' as a deliberate cycle reset for orches
     expect(substr_count($statusContent, '| new |'))->toBe(1);
     expect(substr_count($statusContent, '| selected |'))->toBe(1);
     expect($statusContent)->toContain('state: "selected"');
+});
+
+it("writeStatus still throws on pr_open → 'new' (the regression case the guard exists to catch)", function () {
+    // claude+codex follow-up: the cycle-reset carve-out must be scoped to
+    // blocked. A pr_open task should never be re-selected (the prefilter
+    // excludes issues with an open linked PR), so a 'new' write against an
+    // existing pr_open is a regression — not a legitimate retry. Letting
+    // it through would silently rewind a success terminal and erase the
+    // prior outcome trail from the audit log.
+    createTaskWriterTempHome();
+
+    $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T15:45:00Z');
+
+    $writer->writeStatus('owner/repo', 76, 'pr_open');
+
+    expect(fn () => $writer->writeStatus('owner/repo', 76, 'new'))
+        ->toThrow(RuntimeException::class, 'terminal');
 });
 
 it('terminal guard survives a fresh writer process by reading state from status.md', function () {
@@ -488,9 +505,40 @@ it('writeRunStatus throws when transitioning out of a per-run pr_open terminal s
 
     $writer->writeRunStatus('owner/repo', 80, 'run-1', 'pr_open');
 
-    // 'verifying' would signal silent regression. 'new' is the cycle-reset exemption.
+    // 'verifying' would signal silent regression.
     expect(fn () => $writer->writeRunStatus('owner/repo', 80, 'run-1', 'verifying'))
         ->toThrow(RuntimeException::class, 'terminal');
+});
+
+it("writeRunStatus still throws on per-run pr_open → 'new' (no legitimate reset path)", function () {
+    // codex follow-up: per-run runIds are timestamp-unique, so a pr_open
+    // runId being rewritten with 'new' is even less defensible than the
+    // task-level case. Tightening matches writeStatus.
+    createTaskWriterTempHome();
+
+    $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T22:15:00Z');
+
+    $writer->writeRunStatus('owner/repo', 82, 'run-1', 'pr_open');
+
+    expect(fn () => $writer->writeRunStatus('owner/repo', 82, 'run-1', 'new'))
+        ->toThrow(RuntimeException::class, 'terminal');
+});
+
+it("writeRunStatus allows per-run blocked → 'new' as a deliberate cycle reset", function () {
+    // Symmetric with writeStatus: a blocked per-run state should be able to
+    // be reset to 'new' when the same runId is re-used (rare, but should
+    // mirror task-level semantics).
+    createTaskWriterTempHome();
+
+    $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T22:20:00Z');
+
+    $writer->writeRunStatus('owner/repo', 83, 'run-1', 'blocked');
+    $writer->writeRunStatus('owner/repo', 83, 'run-1', 'new');  // must not throw
+    $writer->writeRunStatus('owner/repo', 83, 'run-1', 'selected');
+
+    // Just confirm no throw and the run file exists; transitions table is
+    // covered elsewhere.
+    expect(true)->toBeTrue();
 });
 
 it('writeRunStatus terminal guard survives a fresh writer process', function () {

@@ -58,19 +58,26 @@ class TaskDirectoryWriterService
         // terminal status with verifying/executing/etc. and erasing the prior
         // outcome trail.
         //
-        // 'new' is the exception: it is the explicit "start a fresh run cycle"
-        // marker the orchestrator writes at the top of every run() invocation.
-        // Without this carve-out a blocked task that survives in the agent-ready
-        // queue (no failure path clears the label except success) would crash
-        // every cron tick on writeStatus(... 'new') — the run never reaches any
-        // real work and the task stays blocked forever. The new row appended to
-        // the transitions table makes the reset visible in the audit trail.
+        // 'new' is permitted as a deliberate cycle reset, but ONLY from blocked:
+        //   - blocked → 'new'  : legitimate retry. Most failure paths leave the
+        //                        agent-ready label intact, so the task is re-
+        //                        selected on the next cron tick and the
+        //                        orchestrator writes 'new' at the top of run().
+        //   - pr_open → 'new'  : forbidden. A pr_open task should never be
+        //                        re-selected (prefilter excludes issues with
+        //                        an open linked PR); allowing this would let a
+        //                        regressed selector silently rewind a success
+        //                        terminal — the exact class of bug the guard
+        //                        was created to catch.
+        // Same state repeated is idempotent (terminal re-emission stays safe).
         if ($current === 'pr_open' || $current === 'blocked') {
             if ($current === $state) {
                 return;
             }
 
-            if ($state !== 'new') {
+            if ($state === 'new' && $current === 'blocked') {
+                // Allowed: see comment above. Fall through to the write below.
+            } else {
                 throw new RuntimeException(
                     "Cannot transition {$key} from terminal state '{$current}' to '{$state}'."
                 );
@@ -128,10 +135,11 @@ class TaskDirectoryWriterService
         // without the same forward-only guard a future regression or recovery
         // path could silently revert a run's pr_open back to new.
         //
-        // 'new' is the explicit cycle-reset marker — see writeStatus() for the
-        // longer-form rationale. In practice runIds are timestamp-unique so a
-        // per-run terminal state is never re-entered, but the symmetric
-        // carve-out keeps the invariant "new always represents a fresh cycle".
+        // The blocked→'new' cycle-reset carve-out is the same as writeStatus —
+        // a reused runId after a blocked outcome is the only legitimate way a
+        // per-run state could re-enter 'new'. pr_open→'new' stays forbidden:
+        // re-emitting 'new' under a runId that already opened a PR would
+        // silently rewrite a success terminal.
         $this->hydrateLastState($key, $statusPath);
 
         $current = $this->lastState[$key] ?? null;
@@ -141,7 +149,9 @@ class TaskDirectoryWriterService
                 return;
             }
 
-            if ($state !== 'new') {
+            if ($state === 'new' && $current === 'blocked') {
+                // Allowed: see writeStatus() for the rationale.
+            } else {
                 throw new RuntimeException(
                     "Cannot transition {$key} from terminal state '{$current}' to '{$state}'."
                 );
