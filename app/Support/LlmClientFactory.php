@@ -36,12 +36,15 @@ final class LlmClientFactory
     }
 
     /**
-     * Return deduplicated list of ['binary_path', 'model'] entries for all
-     * claude-code-configured stages. Used by RunCommand for startup warning.
+     * Return deduplicated list of ['binary_path', 'model'] entries for the
+     * claude-code-configured stages in $stages. Defaults to the full pipeline
+     * for RunCommand; PlanCommand restricts to ['selector', 'planner'] so it
+     * doesn't probe an executor-only config it never invokes.
+     *
+     * @param  array<int, string>  $stages
      */
-    public static function claudeCodeStageConfigs(GlobalConfig $global, ?RepoConfig $repo = null): array
+    public static function claudeCodeStageConfigs(GlobalConfig $global, ?RepoConfig $repo = null, array $stages = ['selector', 'planner', 'executor']): array
     {
-        $stages = ['selector', 'planner', 'executor'];
         $seen = [];
         $result = [];
 
@@ -67,14 +70,15 @@ final class LlmClientFactory
     }
 
     /**
-     * Return deduplicated list of binary paths for all codex-configured stages.
-     * Used by RunCommand for the startup binary-presence warning.
+     * Return deduplicated list of binary paths for the codex-configured stages
+     * in $stages. Defaults to the full pipeline; PlanCommand restricts to
+     * selector+planner.
      *
+     * @param  array<int, string>  $stages
      * @return array<int, array{binary_path: string}>
      */
-    public static function codexStageConfigs(GlobalConfig $global, ?RepoConfig $repo = null): array
+    public static function codexStageConfigs(GlobalConfig $global, ?RepoConfig $repo = null, array $stages = ['selector', 'planner', 'executor']): array
     {
-        $stages = ['selector', 'planner', 'executor'];
         $seen = [];
         $result = [];
 
@@ -99,12 +103,14 @@ final class LlmClientFactory
     }
 
     /**
-     * Return deduplicated list of ['base_url', 'model'] entries for all
-     * ollama-configured stages. Used by RunCommand for probe/warning.
+     * Return deduplicated list of ['base_url', 'model'] entries for the
+     * ollama-configured stages in $stages. Defaults to the full pipeline;
+     * PlanCommand restricts to selector+planner.
+     *
+     * @param  array<int, string>  $stages
      */
-    public static function ollamaStageConfigs(GlobalConfig $global, ?RepoConfig $repo = null): array
+    public static function ollamaStageConfigs(GlobalConfig $global, ?RepoConfig $repo = null, array $stages = ['selector', 'planner', 'executor']): array
     {
-        $stages = ['selector', 'planner', 'executor'];
         $seen = [];
         $result = [];
 

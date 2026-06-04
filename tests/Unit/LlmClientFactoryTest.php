@@ -189,6 +189,30 @@ class LlmClientFactoryTest extends TestCase
         $this->assertSame('llama3.1', $configs[0]['model']);
     }
 
+    public function test_stage_configs_restrict_to_requested_stages(): void
+    {
+        // Locks in the PlanCommand fix: passing $stages excludes the executor
+        // stage so `plan` doesn't probe / warn about a binary or Ollama URL
+        // that only the executor would touch.
+        $global = $this->makeGlobal([
+            'stages' => [
+                'selector' => ['provider' => 'anthropic'],
+                'planner' => ['provider' => 'anthropic'],
+                'executor' => [
+                    'provider' => 'ollama',
+                    'base_url' => 'http://localhost:11434/v1',
+                    'model' => 'llama3.1',
+                ],
+            ],
+        ]);
+
+        $allStages = LlmClientFactory::ollamaStageConfigs($global);
+        $planStages = LlmClientFactory::ollamaStageConfigs($global, null, ['selector', 'planner']);
+
+        $this->assertCount(1, $allStages);
+        $this->assertCount(0, $planStages, 'executor-only Ollama config must not surface when only selector+planner are requested');
+    }
+
     // ─── Test 6: global llm.default.provider=claude-code → ClaudeCodeClient ───
 
     public function test_for_stage_returns_claude_code_client_for_global_claude_code_default(): void
