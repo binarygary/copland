@@ -13,6 +13,9 @@ class GlobalConfig
 
     private string $path;
 
+    /** @var array<int, array{slug: string, path: string}>|null Cached repos() fallback so we don't shell out per call. */
+    private ?array $reposFallback = null;
+
     public function __construct()
     {
         $this->path = $this->resolvePath();
@@ -138,6 +141,23 @@ YAML;
             return $this->data['repos'] ?? [];
         }
 
+        return $this->reposFallback ??= $this->detectFallbackRepos();
+    }
+
+    /**
+     * Detect the current checkout's repo. Stored on `path` is the *worktree root*
+     * (via `git rev-parse --show-toplevel`), not raw getcwd(): when copland is
+     * invoked from a subdirectory of a checkout, downstream consumers
+     * (TaskListService::targetRepos and anything else using `path` as the workspace
+     * root) need to operate on the full tree, not just the subdirectory.
+     *
+     * Memoized via $reposFallback so repos() stays cheap — asanaProjectForRepo()
+     * and friends iterate repos() in tight loops.
+     *
+     * @return array<int, array{slug: string, path: string}>
+     */
+    private function detectFallbackRepos(): array
+    {
         $currentPath = getcwd() ?: '.';
         $detected = $this->detectRepoSlugAtPath($currentPath);
 
@@ -145,7 +165,21 @@ YAML;
             return [];
         }
 
-        return [['slug' => $detected, 'path' => $currentPath]];
+        return [['slug' => $detected, 'path' => $this->resolveWorktreeRoot($currentPath) ?? $currentPath]];
+    }
+
+    private function resolveWorktreeRoot(string $path): ?string
+    {
+        $process = new Process(['git', '-C', $path, 'rev-parse', '--show-toplevel']);
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            return null;
+        }
+
+        $root = trim($process->getOutput());
+
+        return $root === '' ? null : $root;
     }
 
     public function configuredRepos(): array
