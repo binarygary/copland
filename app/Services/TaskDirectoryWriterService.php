@@ -53,19 +53,28 @@ class TaskDirectoryWriterService
 
         $current = $this->lastState[$key] ?? null;
 
-        // pr_open and blocked are terminal. Any forward transition past them is
-        // a bug (replay, recovery, or accidental orchestrator regression) — we'd
-        // rather throw than silently revert pr_open back to new. A no-op repeat
-        // of the same terminal state stays idempotent so retry-safe callers
-        // can call writeStatus(pr_open) twice without surprise.
+        // pr_open and blocked are terminal. The guard is specifically aimed at
+        // *silent* regression — a planner/executor/recovery path overwriting a
+        // terminal status with verifying/executing/etc. and erasing the prior
+        // outcome trail.
+        //
+        // 'new' is the exception: it is the explicit "start a fresh run cycle"
+        // marker the orchestrator writes at the top of every run() invocation.
+        // Without this carve-out a blocked task that survives in the agent-ready
+        // queue (no failure path clears the label except success) would crash
+        // every cron tick on writeStatus(... 'new') — the run never reaches any
+        // real work and the task stays blocked forever. The new row appended to
+        // the transitions table makes the reset visible in the audit trail.
         if ($current === 'pr_open' || $current === 'blocked') {
             if ($current === $state) {
                 return;
             }
 
-            throw new RuntimeException(
-                "Cannot transition {$key} from terminal state '{$current}' to '{$state}'."
-            );
+            if ($state !== 'new') {
+                throw new RuntimeException(
+                    "Cannot transition {$key} from terminal state '{$current}' to '{$state}'."
+                );
+            }
         }
 
         $this->ensureDirectoryExists($dir);
@@ -118,6 +127,11 @@ class TaskDirectoryWriterService
         // claude + copilot: the orchestrator calls writeRunStatus directly, so
         // without the same forward-only guard a future regression or recovery
         // path could silently revert a run's pr_open back to new.
+        //
+        // 'new' is the explicit cycle-reset marker — see writeStatus() for the
+        // longer-form rationale. In practice runIds are timestamp-unique so a
+        // per-run terminal state is never re-entered, but the symmetric
+        // carve-out keeps the invariant "new always represents a fresh cycle".
         $this->hydrateLastState($key, $statusPath);
 
         $current = $this->lastState[$key] ?? null;
@@ -127,9 +141,11 @@ class TaskDirectoryWriterService
                 return;
             }
 
-            throw new RuntimeException(
-                "Cannot transition {$key} from terminal state '{$current}' to '{$state}'."
-            );
+            if ($state !== 'new') {
+                throw new RuntimeException(
+                    "Cannot transition {$key} from terminal state '{$current}' to '{$state}'."
+                );
+            }
         }
 
         $this->ensureDirectoryExists($dir);
@@ -278,8 +294,13 @@ class TaskDirectoryWriterService
 
     /**
      * Parse the `state: "X"` value out of an existing status.md's frontmatter.
-     * Returns null when the file is missing, malformed, or has no state key —
-     * the caller then treats it as "no prior state" and writes normally.
+     * Returns null when the file is missing or has no state key.
+     *
+     * Fail-closed on a failed read (copilot inline #53): if status.md exists
+     * but file_get_contents fails (permissions, disk error), don't silently
+     * cast false to '' and let the caller treat that as "no prior state" —
+     * the terminal guard would then allow overwriting an existing terminal
+     * status.md the read couldn't see. Throw so the run aborts visibly.
      */
     private function readPersistedState(string $statusPath): ?string
     {
@@ -287,7 +308,10 @@ class TaskDirectoryWriterService
             return null;
         }
 
-        $existing = (string) file_get_contents($statusPath);
+        $existing = @file_get_contents($statusPath);
+        if ($existing === false) {
+            throw new RuntimeException("Failed to read persisted state from {$statusPath}");
+        }
 
         if (! str_starts_with($existing, "---\n")) {
             return null;

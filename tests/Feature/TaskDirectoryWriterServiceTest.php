@@ -286,14 +286,16 @@ it('writeRunStatus resets a malformed run status.md instead of doubling its cont
     expect($sizeAfterSecond - $sizeAfterFirst)->toBe($rowOverhead);
 });
 
-it('writeStatus throws when transitioning out of the pr_open terminal state', function () {
+it('writeStatus throws when transitioning out of the pr_open terminal state to a non-new state', function () {
     createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T15:00:00Z');
 
     $writer->writeStatus('owner/repo', 70, 'pr_open');
 
-    expect(fn () => $writer->writeStatus('owner/repo', 70, 'new'))
+    // 'executing' would be the signature of a silent regression — the guard's
+    // actual purpose. 'new' is exempt (see the cycle-reset carve-out test below).
+    expect(fn () => $writer->writeStatus('owner/repo', 70, 'executing'))
         ->toThrow(RuntimeException::class, 'terminal');
 });
 
@@ -308,11 +310,36 @@ it('writeStatus throws when transitioning out of the blocked terminal state', fu
         ->toThrow(RuntimeException::class, 'terminal');
 });
 
+it("writeStatus allows terminal → 'new' as a deliberate cycle reset for orchestrator retries", function () {
+    // Claude's HIGH finding: the orchestrator unconditionally calls
+    // writeStatus(... 'new') at the top of every run(). Most failure paths
+    // don't clear the agent-ready label, so a blocked task gets re-selected
+    // on the next cron tick. Without this carve-out the leading writeStatus
+    // would throw on every retry → "Blocked — the run crashed" comment loop.
+    $home = createTaskWriterTempHome();
+
+    $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T15:15:00Z');
+
+    $writer->writeStatus('owner/repo', 75, 'blocked');
+    $writer->writeStatus('owner/repo', 75, 'new');       // must not throw
+    $writer->writeStatus('owner/repo', 75, 'selected');  // and the cycle continues
+
+    $statusContent = (string) file_get_contents($home.'/.copland/tasks/owner__repo/75/status.md');
+
+    // Audit-trail integrity: both the prior terminal row and the fresh-cycle
+    // row are visible in the transitions table.
+    expect(substr_count($statusContent, '| blocked |'))->toBe(1);
+    expect(substr_count($statusContent, '| new |'))->toBe(1);
+    expect(substr_count($statusContent, '| selected |'))->toBe(1);
+    expect($statusContent)->toContain('state: "selected"');
+});
+
 it('terminal guard survives a fresh writer process by reading state from status.md', function () {
     // Scenario claude/codex/gemini caught: RunCommand instantiates a fresh
     // TaskDirectoryWriterService per cron tick, so the in-memory $lastState
     // is empty when the next tick fires. Without disk hydration, the guard
-    // silently lets writeStatus(new) overwrite an existing pr_open status.md.
+    // silently lets a regressive transition overwrite an existing pr_open
+    // status.md.
     $home = createTaskWriterTempHome();
 
     $first = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T17:00:00Z');
@@ -322,7 +349,9 @@ it('terminal guard survives a fresh writer process by reading state from status.
     // the terminal check, otherwise the test passes vacuously.
     $second = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T17:30:00Z');
 
-    expect(fn () => $second->writeStatus('owner/repo', 73, 'new'))
+    // Using 'executing' (not 'new') because 'new' is the legitimate cycle
+    // reset; 'executing' would only appear in a silent-regression scenario.
+    expect(fn () => $second->writeStatus('owner/repo', 73, 'executing'))
         ->toThrow(RuntimeException::class, 'terminal');
 
     // status.md on disk must still say pr_open — the failed transition must
@@ -452,14 +481,15 @@ it('writeRunStatus produces a 7-row per-run transitions table across the happy-p
     expect($rowCount)->toBe(7);
 });
 
-it('writeRunStatus throws when transitioning out of a per-run pr_open terminal state', function () {
+it('writeRunStatus throws when transitioning out of a per-run pr_open terminal state to a non-new state', function () {
     createTaskWriterTempHome();
 
     $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T22:00:00Z');
 
     $writer->writeRunStatus('owner/repo', 80, 'run-1', 'pr_open');
 
-    expect(fn () => $writer->writeRunStatus('owner/repo', 80, 'run-1', 'new'))
+    // 'verifying' would signal silent regression. 'new' is the cycle-reset exemption.
+    expect(fn () => $writer->writeRunStatus('owner/repo', 80, 'run-1', 'verifying'))
         ->toThrow(RuntimeException::class, 'terminal');
 });
 
@@ -474,7 +504,7 @@ it('writeRunStatus terminal guard survives a fresh writer process', function () 
 
     $second = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T23:00:00Z');
 
-    expect(fn () => $second->writeRunStatus('owner/repo', 81, 'run-1', 'new'))
+    expect(fn () => $second->writeRunStatus('owner/repo', 81, 'run-1', 'verifying'))
         ->toThrow(RuntimeException::class, 'terminal');
 
     $statusContent = file_get_contents($home.'/.copland/tasks/owner__repo/81/runs/run-1/status.md');
