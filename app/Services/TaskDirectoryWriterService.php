@@ -109,10 +109,31 @@ class TaskDirectoryWriterService
 
     public function writeRunStatus(string $repoSlug, string|int $taskId, string $runId, string $state): void
     {
+        $key = "{$repoSlug}/{$taskId}/runs/{$runId}";
         $dir = $this->runDir($repoSlug, $taskId, $runId);
+        $statusPath = $dir.'/status.md';
+
+        // Mirror writeStatus: hydrate from disk on cache miss so the terminal
+        // guard survives a fresh process (cron tick, replay, recovery).
+        // claude + copilot: the orchestrator calls writeRunStatus directly, so
+        // without the same forward-only guard a future regression or recovery
+        // path could silently revert a run's pr_open back to new.
+        $this->hydrateLastState($key, $statusPath);
+
+        $current = $this->lastState[$key] ?? null;
+
+        if ($current === 'pr_open' || $current === 'blocked') {
+            if ($current === $state) {
+                return;
+            }
+
+            throw new RuntimeException(
+                "Cannot transition {$key} from terminal state '{$current}' to '{$state}'."
+            );
+        }
+
         $this->ensureDirectoryExists($dir);
 
-        $statusPath = $dir.'/status.md';
         $now = $this->now();
 
         $frontmatter = $this->renderFrontmatter([

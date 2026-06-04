@@ -419,7 +419,7 @@ it('writeBlockedIfNotTerminal transitions executing -> blocked', function () {
 
 });
 
-it('writeRunStatus produces a per-run transitions table for the full lifecycle', function () {
+it('writeRunStatus produces a 7-row per-run transitions table across the happy-path lifecycle', function () {
     $home = createTaskWriterTempHome();
 
     $counter = 0;
@@ -432,7 +432,9 @@ it('writeRunStatus produces a per-run transitions table for the full lifecycle',
     $writer = new TaskDirectoryWriterService(clock: $clock);
 
     $runId = '2026-05-27T19-15-22Z';
-    $states = ['new', 'selected', 'planning', 'planned', 'executing', 'verifying', 'pr_open', 'blocked'];
+    // pr_open is the success terminal for per-run state too now — writeRunStatus
+    // applies the same forward-only guard writeStatus does.
+    $states = ['new', 'selected', 'planning', 'planned', 'executing', 'verifying', 'pr_open'];
     foreach ($states as $state) {
         $writer->writeRunStatus('owner/repo', 50, $runId, $state);
     }
@@ -441,14 +443,42 @@ it('writeRunStatus produces a per-run transitions table for the full lifecycle',
     expect(file_exists($statusPath))->toBeTrue();
 
     $statusContent = file_get_contents($statusPath);
-    expect($statusContent)->toContain('state: "blocked"');
+    expect($statusContent)->toContain('state: "pr_open"');
 
     $rowCount = 0;
     foreach ($states as $state) {
         $rowCount += substr_count($statusContent, "| {$state} |");
     }
-    expect($rowCount)->toBe(8);
+    expect($rowCount)->toBe(7);
+});
 
+it('writeRunStatus throws when transitioning out of a per-run pr_open terminal state', function () {
+    createTaskWriterTempHome();
+
+    $writer = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T22:00:00Z');
+
+    $writer->writeRunStatus('owner/repo', 80, 'run-1', 'pr_open');
+
+    expect(fn () => $writer->writeRunStatus('owner/repo', 80, 'run-1', 'new'))
+        ->toThrow(RuntimeException::class, 'terminal');
+});
+
+it('writeRunStatus terminal guard survives a fresh writer process', function () {
+    // Mirrors the writeStatus test: a fresh writer with empty $lastState must
+    // still refuse to revert a persisted per-run pr_open. claude+copilot's
+    // critical finding was that the guard was half-applied (writeStatus only).
+    $home = createTaskWriterTempHome();
+
+    $first = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T22:30:00Z');
+    $first->writeRunStatus('owner/repo', 81, 'run-1', 'pr_open');
+
+    $second = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T23:00:00Z');
+
+    expect(fn () => $second->writeRunStatus('owner/repo', 81, 'run-1', 'new'))
+        ->toThrow(RuntimeException::class, 'terminal');
+
+    $statusContent = file_get_contents($home.'/.copland/tasks/owner__repo/81/runs/run-1/status.md');
+    expect($statusContent)->toContain('state: "pr_open"');
 });
 
 it('writeRunStatus accepts a 13-digit string task id and a Z-form run id', function () {
