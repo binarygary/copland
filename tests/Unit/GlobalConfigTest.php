@@ -114,6 +114,73 @@ GIT
     $_SERVER['HOME'] = $originalHome;
 });
 
+it('falls back to current-checkout auto-detection when repos: key is absent', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $originalCwd = getcwd();
+    $home = sys_get_temp_dir().'/copland-global-config-no-repos-key-'.uniqid();
+    $repoPath = $home.'/repo';
+
+    mkdir($repoPath, 0755, true);
+    $_SERVER['HOME'] = $home;
+    chdir($repoPath);
+
+    // Defaults-only config — exactly the regression: a user edits ~/.copland.yml
+    // to set a defaults value without a repos: block, and the manifest silently
+    // empties. With the fallback, the current checkout is treated as configured.
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+defaults:
+  max_files_changed: 5
+YAML
+    );
+
+    mkdir($repoPath.'/.git', 0755, true);
+    file_put_contents($repoPath.'/.git/config', <<<'GIT'
+[remote "origin"]
+    url = git@github.com:owner/current.git
+GIT
+    );
+
+    $config = new GlobalConfig;
+
+    expect($config->configuredRepos())->toBe([
+        ['slug' => 'owner/current', 'path' => getcwd()],
+    ]);
+
+    chdir($originalCwd);
+    $_SERVER['HOME'] = $originalHome;
+});
+
+it('respects an explicit empty repos: list (does not auto-detect)', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $originalCwd = getcwd();
+    $home = sys_get_temp_dir().'/copland-global-config-empty-repos-'.uniqid();
+    $repoPath = $home.'/repo';
+
+    mkdir($repoPath, 0755, true);
+    $_SERVER['HOME'] = $home;
+    chdir($repoPath);
+
+    // The user explicitly said "no repos." Auto-detection must not override that.
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+repos: []
+YAML
+    );
+
+    mkdir($repoPath.'/.git', 0755, true);
+    file_put_contents($repoPath.'/.git/config', <<<'GIT'
+[remote "origin"]
+    url = git@github.com:owner/current.git
+GIT
+    );
+
+    $config = new GlobalConfig;
+
+    expect($config->configuredRepos())->toBe([]);
+
+    chdir($originalCwd);
+    $_SERVER['HOME'] = $originalHome;
+});
+
 it('returns empty string for asanaToken when not configured', function () {
     $originalHome = $_SERVER['HOME'] ?? null;
     $home = sys_get_temp_dir().'/copland-global-config-asana-'.uniqid();

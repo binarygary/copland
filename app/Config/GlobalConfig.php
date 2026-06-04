@@ -128,7 +128,24 @@ YAML;
 
     public function repos(): array
     {
-        return $this->data['repos'] ?? [];
+        // An explicit "repos:" key (even an empty list) wins: the user is
+        // declaring "this is my repo list." A missing key means the user hasn't
+        // declared anything — fall back to the current checkout so creating
+        // ~/.copland.yml just to set defaults/models/api doesn't silently empty
+        // the manifest. The "no config file at all" path already lands here too
+        // because ensureExists() writes a default with `# repos:` commented out.
+        if (array_key_exists('repos', $this->data)) {
+            return $this->data['repos'] ?? [];
+        }
+
+        $currentPath = getcwd() ?: '.';
+        $detected = $this->detectRepoSlugAtPath($currentPath);
+
+        if ($detected === null) {
+            return [];
+        }
+
+        return [['slug' => $detected, 'path' => $currentPath]];
     }
 
     public function configuredRepos(): array
