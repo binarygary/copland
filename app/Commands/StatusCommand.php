@@ -17,7 +17,8 @@ class StatusCommand extends Command
 
         $this->line('Copland writes a status surface in two places — use whichever fits your review flow:');
         $this->line('');
-        $this->line("  - Append-only audit trail: {$runsPath}");
+        $this->line('  - Append-only audit trail: ~/.copland/logs/runs.jsonl');
+        $this->line("      ({$runsPath})");
         $this->line('      One JSON line per run. Pipe through `jq` for ad-hoc queries.');
         $this->line('  - Live task manifest: `copland console`');
         $this->line('      Godot UI with the task state per repo, including in-flight runs.');
