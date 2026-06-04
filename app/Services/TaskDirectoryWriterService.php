@@ -41,10 +41,51 @@ class TaskDirectoryWriterService
 
     public function writeStatus(string $repoSlug, string|int $taskId, string $state): void
     {
+        $key = "{$repoSlug}/{$taskId}";
         $dir = $this->taskDir($repoSlug, $taskId);
+        $statusPath = $dir.'/status.md';
+
+        // Hydrate from disk on cache miss: $lastState is process-scoped and
+        // RunCommand constructs a fresh writer per cron invocation, so the
+        // in-memory check alone would let the next tick happily overwrite a
+        // pr_open / blocked status.md.
+        $this->hydrateLastState($key, $statusPath);
+
+        $current = $this->lastState[$key] ?? null;
+
+        // pr_open and blocked are terminal. The guard is specifically aimed at
+        // *silent* regression — a planner/executor/recovery path overwriting a
+        // terminal status with verifying/executing/etc. and erasing the prior
+        // outcome trail.
+        //
+        // 'new' is permitted as a deliberate cycle reset, but ONLY from blocked:
+        //   - blocked → 'new'  : legitimate retry. Most failure paths leave the
+        //                        agent-ready label intact, so the task is re-
+        //                        selected on the next cron tick and the
+        //                        orchestrator writes 'new' at the top of run().
+        //   - pr_open → 'new'  : forbidden. A pr_open task should never be
+        //                        re-selected (prefilter excludes issues with
+        //                        an open linked PR); allowing this would let a
+        //                        regressed selector silently rewind a success
+        //                        terminal — the exact class of bug the guard
+        //                        was created to catch.
+        // Same state repeated is idempotent (terminal re-emission stays safe).
+        if ($current === 'pr_open' || $current === 'blocked') {
+            if ($current === $state) {
+                return;
+            }
+
+            if ($state === 'new' && $current === 'blocked') {
+                // Allowed: see comment above. Fall through to the write below.
+            } else {
+                throw new RuntimeException(
+                    "Cannot transition {$key} from terminal state '{$current}' to '{$state}'."
+                );
+            }
+        }
+
         $this->ensureDirectoryExists($dir);
 
-        $statusPath = $dir.'/status.md';
         $now = $this->now();
 
         $frontmatter = $this->renderFrontmatter([
@@ -70,7 +111,10 @@ class TaskDirectoryWriterService
 
     public function writeBlockedIfNotTerminal(string $repoSlug, string|int $taskId): void
     {
-        $current = $this->lastState["{$repoSlug}/{$taskId}"] ?? null;
+        $key = "{$repoSlug}/{$taskId}";
+        $this->hydrateLastState($key, $this->taskDir($repoSlug, $taskId).'/status.md');
+
+        $current = $this->lastState[$key] ?? null;
 
         if ($current === null || $current === 'pr_open' || $current === 'blocked') {
             return;
@@ -81,10 +125,41 @@ class TaskDirectoryWriterService
 
     public function writeRunStatus(string $repoSlug, string|int $taskId, string $runId, string $state): void
     {
+        $key = "{$repoSlug}/{$taskId}/runs/{$runId}";
         $dir = $this->runDir($repoSlug, $taskId, $runId);
+        $statusPath = $dir.'/status.md';
+
+        // Mirror writeStatus: hydrate from disk on cache miss so the terminal
+        // guard survives a fresh process (cron tick, replay, recovery).
+        // claude + copilot: the orchestrator calls writeRunStatus directly, so
+        // without the same forward-only guard a future regression or recovery
+        // path could silently revert a run's pr_open back to new.
+        //
+        // The blocked→'new' cycle-reset carve-out is the same as writeStatus —
+        // a reused runId after a blocked outcome is the only legitimate way a
+        // per-run state could re-enter 'new'. pr_open→'new' stays forbidden:
+        // re-emitting 'new' under a runId that already opened a PR would
+        // silently rewrite a success terminal.
+        $this->hydrateLastState($key, $statusPath);
+
+        $current = $this->lastState[$key] ?? null;
+
+        if ($current === 'pr_open' || $current === 'blocked') {
+            if ($current === $state) {
+                return;
+            }
+
+            if ($state === 'new' && $current === 'blocked') {
+                // Allowed: see writeStatus() for the rationale.
+            } else {
+                throw new RuntimeException(
+                    "Cannot transition {$key} from terminal state '{$current}' to '{$state}'."
+                );
+            }
+        }
+
         $this->ensureDirectoryExists($dir);
 
-        $statusPath = $dir.'/status.md';
         $now = $this->now();
 
         $frontmatter = $this->renderFrontmatter([
@@ -111,7 +186,10 @@ class TaskDirectoryWriterService
 
     public function writeRunBlockedIfNotTerminal(string $repoSlug, string|int $taskId, string $runId): void
     {
-        $current = $this->lastState["{$repoSlug}/{$taskId}/runs/{$runId}"] ?? null;
+        $key = "{$repoSlug}/{$taskId}/runs/{$runId}";
+        $this->hydrateLastState($key, $this->runDir($repoSlug, $taskId, $runId).'/status.md');
+
+        $current = $this->lastState[$key] ?? null;
 
         if ($current === null || $current === 'pr_open' || $current === 'blocked') {
             return;
@@ -206,6 +284,63 @@ class TaskDirectoryWriterService
         }
 
         return $rendered;
+    }
+
+    /**
+     * Cache miss → check status.md on disk so the terminal guard works
+     * across process restarts (cron tick, replay, recovery).
+     */
+    private function hydrateLastState(string $key, string $statusPath): void
+    {
+        if (isset($this->lastState[$key])) {
+            return;
+        }
+
+        $state = $this->readPersistedState($statusPath);
+        if ($state !== null) {
+            $this->lastState[$key] = $state;
+        }
+    }
+
+    /**
+     * Parse the `state: "X"` value out of an existing status.md's frontmatter.
+     * Returns null when the file is missing or has no state key.
+     *
+     * Fail-closed on a failed read (copilot inline #53): if status.md exists
+     * but file_get_contents fails (permissions, disk error), don't silently
+     * cast false to '' and let the caller treat that as "no prior state" —
+     * the terminal guard would then allow overwriting an existing terminal
+     * status.md the read couldn't see. Throw so the run aborts visibly.
+     */
+    private function readPersistedState(string $statusPath): ?string
+    {
+        if (! is_file($statusPath)) {
+            return null;
+        }
+
+        $existing = @file_get_contents($statusPath);
+        if ($existing === false) {
+            throw new RuntimeException("Failed to read persisted state from {$statusPath}");
+        }
+
+        if (! str_starts_with($existing, "---\n")) {
+            return null;
+        }
+
+        $afterOpen = substr($existing, 4);
+        $closePos = strpos($afterOpen, "\n---\n");
+
+        if ($closePos === false) {
+            return null;
+        }
+
+        $frontmatter = substr($afterOpen, 0, $closePos);
+
+        if (preg_match('/^state:\s*"([^"]*)"/m', $frontmatter, $matches) === 1) {
+            return $matches[1];
+        }
+
+        return null;
     }
 
     private function extractBody(string $existing): string
