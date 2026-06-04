@@ -24,7 +24,7 @@ class RunLogStore
         return $path;
     }
 
-    private function path(): string
+    public function path(): string
     {
         return HomeDirectory::resolve().'/.copland/logs/runs.jsonl';
     }

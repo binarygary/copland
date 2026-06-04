@@ -2,7 +2,7 @@
 
 namespace App\Commands;
 
-use App\Support\HomeDirectory;
+use App\Support\RunLogStore;
 use LaravelZero\Framework\Commands\Command;
 
 class StatusCommand extends Command
@@ -13,7 +13,9 @@ class StatusCommand extends Command
 
     public function handle(): void
     {
-        $runsPath = HomeDirectory::resolve().'/.copland/logs/runs.jsonl';
+        // Pull the path from the writer so we can't drift; if it ever moves,
+        // we move it in one place.
+        $runsPath = (new RunLogStore)->path();
 
         $this->line('Copland writes a status surface in two places — use whichever fits your review flow:');
         $this->line('');
