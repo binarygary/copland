@@ -70,9 +70,22 @@ class GitService
         return $total;
     }
 
+    public function stageAll(string $workspacePath): void
+    {
+        // Exclude pathspec keeps `.copland.yml` out of staged content the same way
+        // hasUncommittedChanges()/changedFiles() ignore it. Without this, a
+        // repo-local `.copland.yml` that's currently untracked would slip into
+        // the agent's PR via `git add -A` even though the dirty-tree guard let
+        // the run proceed. (claude #58)
+        $this->run(['git', 'add', '-A', '--', '.', ':(exclude).copland.yml'], $workspacePath, 'git add failed');
+    }
+
     public function commit(string $workspacePath, string $message): void
     {
-        $this->run(['git', 'add', '-A'], $workspacePath, 'git add failed');
+        // Caller is responsible for staging via stageAll() first. Splitting these
+        // lets the orchestrator stage, then ask hasStagedDiffVsBase, then either
+        // commit or skip cleanly — without ever calling `git commit` on an empty
+        // index (which exits non-zero and used to be reported as a crash).
         $this->run(['git', 'commit', '-m', $message], $workspacePath, 'git commit failed');
     }
 
@@ -83,6 +96,51 @@ class GitService
             $workspacePath,
             "git push failed for branch '{$branch}'"
         );
+    }
+
+    public function hasStagedDiffVsBase(string $workspacePath, string $baseBranch): bool
+    {
+        // `git diff --cached --quiet <base>` exits 0 when the index matches base's
+        // tree and 1 when there's a diff. We compare content, not commit count —
+        // rev-list-based checks fire green even when the committed tree happens
+        // to be identical to base (revert chain, --allow-empty, normalization
+        // wiped the diff), letting the PR API reject the push with 422.
+        $result = $this->execute(
+            ['git', 'diff', '--cached', '--quiet', $baseBranch],
+            $workspacePath,
+        );
+
+        // 0 == match, 1 == diff. Anything else (128 for "unknown revision",
+        // 129 for unknown flag, etc.) is a real git error. Treating those as
+        // "no diff" would have the orchestrator silently strip the agent-ready
+        // label, delete the local branch, and post a misleading "Executor
+        // produced no changes" comment — masking a typo in base_branch or a
+        // base ref that isn't checked out locally.
+        if ($result['exitCode'] !== 0 && $result['exitCode'] !== 1) {
+            $stderr = trim($result['stderr']);
+            $detail = $stderr !== '' ? $stderr : trim($result['stdout']);
+
+            throw new RuntimeException(
+                "git diff --cached --quiet '{$baseBranch}' failed (exit {$result['exitCode']}): {$detail}"
+            );
+        }
+
+        return $result['exitCode'] === 1;
+    }
+
+    public function resetHard(string $workspacePath): void
+    {
+        $this->run(['git', 'reset', '--hard', 'HEAD'], $workspacePath, 'git reset --hard failed');
+    }
+
+    public function switchBranch(string $workspacePath, string $branch): void
+    {
+        $this->run(['git', 'switch', $branch], $workspacePath, "git switch failed for branch '{$branch}'");
+    }
+
+    public function deleteLocalBranch(string $workspacePath, string $branch): void
+    {
+        $this->run(['git', 'branch', '-D', $branch], $workspacePath, "git branch -D failed for branch '{$branch}'");
     }
 
     private function hasUncommittedChanges(string $repoPath): bool

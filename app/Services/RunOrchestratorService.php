@@ -336,8 +336,119 @@ class RunOrchestratorService
 
             $this->pushLog('      Verification passed');
 
-            // Step 10: Commit and push
-            $this->pushLog('[8/8] Committing, pushing, and opening draft PR');
+            // Step 10: Stage, then either commit/push or skip cleanly
+            $this->pushLog('[8/8] Staging, committing, pushing, and opening draft PR');
+
+            // base_branch is required: a silent fallback to 'main' on a repo whose
+            // real base is master/develop would compare against the wrong tree and
+            // either pass spuriously or break the rev parse with a confusing error.
+            // Used immediately for the staged-diff check as well as the PR base.
+            if (! isset($repoProfile['base_branch']) || ! is_string($repoProfile['base_branch']) || trim($repoProfile['base_branch']) === '') {
+                throw new \RuntimeException("repoProfile['base_branch'] is required for the no-diff guard and PR creation");
+            }
+            $baseBranch = trim($repoProfile['base_branch']);
+
+            // Stage everything first so the diff check sees the full picture
+            // (verifier counts untracked files via `git status --porcelain` but
+            // those wouldn't show up in `git diff` until staged).
+            //
+            // NOTE: workspacePath is the user's live checkout — WorkspaceService::create
+            // returns $repoPath directly, no worktree. The staging mutates the real
+            // working index; the dirty-tree check in prepareExecutionBranch() at the
+            // top of the run is what makes this safe. If that upstream check ever
+            // changes, the resetHard cleanup below could destroy pre-existing
+            // staged content.
+            $this->git->stageAll($workspacePath);
+
+            // hasStagedDiffVsBase now throws on unexpected git exit codes (bad
+            // base ref, corrupt index, etc.). If it throws, we've staged changes
+            // but won't reach either the skip cleanup or the commit step — the
+            // user's index would be left dirty. Reset before re-throwing so the
+            // checkout is restored. (copilot #58)
+            try {
+                $hasDiffVsBase = $this->git->hasStagedDiffVsBase($workspacePath, $baseBranch);
+            } catch (Throwable $diffError) {
+                try {
+                    $this->git->resetHard($workspacePath);
+                } catch (Throwable) {
+                    // Best-effort cleanup; original $diffError is still the actionable one.
+                }
+                throw $diffError;
+            }
+
+            // No-diff guard runs BEFORE commit. `git commit` exits non-zero on an
+            // empty index — the previous post-commit check let that throw and got
+            // reported as a crash. A content diff (not commit count) catches the
+            // case where the staged tree is identical to base (normalization
+            // wiped the diff, executor's edit was a no-op, etc.).
+            if (! $hasDiffVsBase) {
+                $reason = 'Executor produced no changes';
+                $this->pushLog("      Staged tree is identical to {$baseBranch} — no PR will be opened");
+
+                // Drop the agent branch locally and switch back to base. resetHard
+                // first because staged changes block `git switch`.
+                try {
+                    $this->git->resetHard($workspacePath);
+                    $this->git->switchBranch($workspacePath, $baseBranch);
+                    $this->git->deleteLocalBranch($workspacePath, $plan->branchName);
+                    $this->pushLog("      Cleaned up orphan branch {$plan->branchName}");
+                } catch (Throwable $e) {
+                    $this->pushLog("      Warning: failed to clean up orphan branch: {$e->getMessage()}");
+                }
+
+                // Remove ONE required label so the next cron tick doesn't re-select
+                // and re-skip the same issue forever. getIssues() filters with AND
+                // on all required_labels, so dropping any one is sufficient — and
+                // dropping only the first preserves unrelated eligibility labels
+                // the user may have added (e.g. 'high-priority' beside 'agent-ready').
+                //
+                // This skip-only untag is intentionally asymmetric with the other
+                // failure paths (verification, validator, executor, crash): a
+                // no-diff outcome usually means the issue is already resolved, so
+                // we want to stop the loop. Transient hard failures elsewhere
+                // benefit from retry, so they leave the labels intact.
+                //
+                // `required_labels: []` (explicit empty list) is treated the same
+                // as the missing-key default so the loop-prevention guarantee
+                // doesn't silently degrade.
+                $requiredLabels = $repoProfile['required_labels'] ?? [];
+                if (! is_array($requiredLabels) || $requiredLabels === []) {
+                    $requiredLabels = ['agent-ready'];
+                }
+                $triggerLabel = (string) $requiredLabels[array_key_first($requiredLabels)];
+
+                try {
+                    $this->taskSource->removeTag($repo, $selectedIssue['number'], $triggerLabel);
+                    $this->pushLog("      Removed issue label {$triggerLabel} (no-diff skip)");
+                } catch (Throwable $e) {
+                    $this->pushLog("      Warning: failed to remove label {$triggerLabel}: {$e->getMessage()}");
+                }
+
+                $this->comment(
+                    $repo,
+                    $selectedIssue['number'],
+                    "⏭ **Skipped** — {$reason}.\n\nThe agent ran end-to-end but the resulting tree is identical to `{$baseBranch}`. Re-add the `{$triggerLabel}` label after addressing the underlying issue (or close the issue if no change is actually needed).",
+                );
+
+                $result = new RunResult(
+                    status: 'skipped',
+                    prUrl: null,
+                    prNumber: null,
+                    selectedIssueTitle: $selectedIssue['title'],
+                    selectedTaskId: $selectedIssue['number'],
+                    failureReason: $reason,
+                    log: $this->log,
+                    startedAt: $startedAt,
+                    finishedAt: date(DATE_ATOM),
+                    selectorUsage: $selectorUsage,
+                    plannerUsage: $plan->usage,
+                    executorUsage: $executionResult->usage,
+                    executorDurationSeconds: $executionResult->durationSeconds,
+                );
+
+                return $result;
+            }
+
             $this->git->commit($workspacePath, "agent: implement #{$selectedIssue['number']} {$selectedIssue['title']}");
             $this->git->push($workspacePath, $plan->branchName);
             $this->pushLog("      Pushed branch {$plan->branchName}");
