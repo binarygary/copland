@@ -113,25 +113,27 @@ it('cleans up the .tmp cache file when rename fails', function () {
         mkdir($cacheDir.'/issues-cache.json', 0700, true);
         file_put_contents($cacheDir.'/issues-cache.json/sentinel', 'x');
 
+        // Real exercise of the cleanup path: classify() must succeed so $dirty is
+        // set and writeCache() actually runs. Earlier the factory threw, which
+        // sent build() into its catch arm without dirtying the cache — the .tmp
+        // assertion then passed vacuously regardless of whether the unlink existed.
+        $github = Mockery::mock(\App\Services\GitHubService::class);
+        $github->shouldReceive('getIssues')->andReturn([]);
+
         $service = new TaskListService(
             config: new GlobalConfig,
-            githubFactory: fn () => throw new RuntimeException('GitHub must not be called'),
+            githubFactory: fn () => $github,
             cacheTtlSeconds: 120,
             clock: fn (): int => 1_700_000_000,
         );
 
-        // build() will try to writeCache after classify() falls back to the
-        // empty-cache path on the GitHub-throw. We don't care about the rows,
-        // only that the rename-failure path doesn't leak issues-cache.json.tmp.
-        try {
-            $service->build();
-        } catch (Throwable) {
-            // build() may surface no rows but should not throw; if it does,
-            // the cleanup assertion below still has to hold.
-        }
+        $service->build();
 
+        // No .tmp residue: writeCache succeeded in writing the .tmp, failed to
+        // rename it (target is a directory), and must have unlinked it.
         expect(file_exists($cacheDir.'/issues-cache.json.tmp'))->toBeFalse();
     } finally {
+        Mockery::close();
         $cleanup();
     }
 });
