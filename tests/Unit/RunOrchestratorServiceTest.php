@@ -411,7 +411,7 @@ it('runs a requested issue end-to-end without invoking the selector', function (
         runLogStore: $stores['log'],
     );
 
-    $result = $service->run('acme/repo', ['repo_path' => '/repos/acme', 'required_labels' => ['agent-ready']], targetIssueNumber: '42');
+    $result = $service->run('acme/repo', ['repo_path' => '/repos/acme', 'required_labels' => ['agent-ready'], 'base_branch' => 'main'], targetIssueNumber: '42');
 
     expect($result->status)->toBe('succeeded');
     expect($result->prUrl)->toBe('https://example.test/pr/7');

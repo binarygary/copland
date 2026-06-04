@@ -343,14 +343,19 @@ class RunOrchestratorService
             $this->pushLog("      Pushed branch {$plan->branchName}");
 
             // Step 11: Create draft PR — target the configured base branch (RepoConfig
-            // base_branch / GlobalConfig defaults.base_branch). WorkspaceService already
-            // branches off this base, so the head branch has commits ahead of it.
+            // base_branch, threaded in via RunCommand's repoProfile assembly). WorkspaceService
+            // already branches off this base, so the head branch has commits ahead of it.
+            // Required key: a silent ?? 'main' fallback would open the PR against the wrong
+            // base for repos whose actual base is master/develop and the head was cut from that.
+            if (! isset($repoProfile['base_branch']) || ! is_string($repoProfile['base_branch']) || trim($repoProfile['base_branch']) === '') {
+                throw new \RuntimeException("repoProfile['base_branch'] is required for PR creation");
+            }
             $pr = $this->taskSource->openDraftPr(
                 $repo,
                 $plan->branchName,
                 $plan->prTitle,
                 $plan->prBody,
-                (string) ($repoProfile['base_branch'] ?? 'main'),
+                $repoProfile['base_branch'],
             );
             $prUrl = $pr['html_url'];
             $prNumber = $pr['number'];
