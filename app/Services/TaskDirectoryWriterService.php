@@ -42,6 +42,15 @@ class TaskDirectoryWriterService
     public function writeStatus(string $repoSlug, string|int $taskId, string $state): void
     {
         $key = "{$repoSlug}/{$taskId}";
+        $dir = $this->taskDir($repoSlug, $taskId);
+        $statusPath = $dir.'/status.md';
+
+        // Hydrate from disk on cache miss: $lastState is process-scoped and
+        // RunCommand constructs a fresh writer per cron invocation, so the
+        // in-memory check alone would let the next tick happily overwrite a
+        // pr_open / blocked status.md.
+        $this->hydrateLastState($key, $statusPath);
+
         $current = $this->lastState[$key] ?? null;
 
         // pr_open and blocked are terminal. Any forward transition past them is
@@ -59,10 +68,8 @@ class TaskDirectoryWriterService
             );
         }
 
-        $dir = $this->taskDir($repoSlug, $taskId);
         $this->ensureDirectoryExists($dir);
 
-        $statusPath = $dir.'/status.md';
         $now = $this->now();
 
         $frontmatter = $this->renderFrontmatter([
@@ -88,7 +95,10 @@ class TaskDirectoryWriterService
 
     public function writeBlockedIfNotTerminal(string $repoSlug, string|int $taskId): void
     {
-        $current = $this->lastState["{$repoSlug}/{$taskId}"] ?? null;
+        $key = "{$repoSlug}/{$taskId}";
+        $this->hydrateLastState($key, $this->taskDir($repoSlug, $taskId).'/status.md');
+
+        $current = $this->lastState[$key] ?? null;
 
         if ($current === null || $current === 'pr_open' || $current === 'blocked') {
             return;
@@ -129,7 +139,10 @@ class TaskDirectoryWriterService
 
     public function writeRunBlockedIfNotTerminal(string $repoSlug, string|int $taskId, string $runId): void
     {
-        $current = $this->lastState["{$repoSlug}/{$taskId}/runs/{$runId}"] ?? null;
+        $key = "{$repoSlug}/{$taskId}/runs/{$runId}";
+        $this->hydrateLastState($key, $this->runDir($repoSlug, $taskId, $runId).'/status.md');
+
+        $current = $this->lastState[$key] ?? null;
 
         if ($current === null || $current === 'pr_open' || $current === 'blocked') {
             return;
@@ -224,6 +237,55 @@ class TaskDirectoryWriterService
         }
 
         return $rendered;
+    }
+
+    /**
+     * Cache miss → check status.md on disk so the terminal guard works
+     * across process restarts (cron tick, replay, recovery).
+     */
+    private function hydrateLastState(string $key, string $statusPath): void
+    {
+        if (isset($this->lastState[$key])) {
+            return;
+        }
+
+        $state = $this->readPersistedState($statusPath);
+        if ($state !== null) {
+            $this->lastState[$key] = $state;
+        }
+    }
+
+    /**
+     * Parse the `state: "X"` value out of an existing status.md's frontmatter.
+     * Returns null when the file is missing, malformed, or has no state key —
+     * the caller then treats it as "no prior state" and writes normally.
+     */
+    private function readPersistedState(string $statusPath): ?string
+    {
+        if (! is_file($statusPath)) {
+            return null;
+        }
+
+        $existing = (string) file_get_contents($statusPath);
+
+        if (! str_starts_with($existing, "---\n")) {
+            return null;
+        }
+
+        $afterOpen = substr($existing, 4);
+        $closePos = strpos($afterOpen, "\n---\n");
+
+        if ($closePos === false) {
+            return null;
+        }
+
+        $frontmatter = substr($afterOpen, 0, $closePos);
+
+        if (preg_match('/^state:\s*"([^"]*)"/m', $frontmatter, $matches) === 1) {
+            return $matches[1];
+        }
+
+        return null;
     }
 
     private function extractBody(string $existing): string

@@ -308,6 +308,52 @@ it('writeStatus throws when transitioning out of the blocked terminal state', fu
         ->toThrow(RuntimeException::class, 'terminal');
 });
 
+it('terminal guard survives a fresh writer process by reading state from status.md', function () {
+    // Scenario claude/codex/gemini caught: RunCommand instantiates a fresh
+    // TaskDirectoryWriterService per cron tick, so the in-memory $lastState
+    // is empty when the next tick fires. Without disk hydration, the guard
+    // silently lets writeStatus(new) overwrite an existing pr_open status.md.
+    $home = createTaskWriterTempHome();
+
+    $first = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T17:00:00Z');
+    $first->writeStatus('owner/repo', 73, 'pr_open');
+
+    // Brand new instance — empty $lastState. Must hydrate from disk before
+    // the terminal check, otherwise the test passes vacuously.
+    $second = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T17:30:00Z');
+
+    expect(fn () => $second->writeStatus('owner/repo', 73, 'new'))
+        ->toThrow(RuntimeException::class, 'terminal');
+
+    // status.md on disk must still say pr_open — the failed transition must
+    // not have written anything.
+    $statusContent = file_get_contents($home.'/.copland/tasks/owner__repo/73/status.md');
+    expect($statusContent)->toContain('state: "pr_open"');
+});
+
+it('writeBlockedIfNotTerminal respects a persisted pr_open across processes', function () {
+    // writeBlockedIfNotTerminal short-circuits when $lastState says pr_open/blocked.
+    // Same in-memory limitation: a fresh writer used to treat null lastState as
+    // "no prior state" and (in writeBlockedIfNotTerminal's case) early-return —
+    // but the finally block of the orchestrator only writes blocked AFTER an
+    // earlier writeStatus call sets lastState. The cross-process risk is
+    // writeStatus itself, which we just covered. Confirm writeBlockedIfNotTerminal
+    // now also short-circuits when status.md on disk is already pr_open even if
+    // lastState is empty.
+    $home = createTaskWriterTempHome();
+
+    $first = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T18:00:00Z');
+    $first->writeStatus('owner/repo', 74, 'pr_open');
+
+    $second = new TaskDirectoryWriterService(clock: fn () => '2026-05-27T18:30:00Z');
+    $second->writeBlockedIfNotTerminal('owner/repo', 74);
+
+    $statusContent = file_get_contents($home.'/.copland/tasks/owner__repo/74/status.md');
+    expect($statusContent)->toContain('state: "pr_open"');
+    expect(substr_count($statusContent, '| pr_open |'))->toBe(1);
+    expect(substr_count($statusContent, '| blocked |'))->toBe(0);
+});
+
 it('writeStatus is idempotent when re-emitted with the same terminal state (pr_open)', function () {
     $home = createTaskWriterTempHome();
 
