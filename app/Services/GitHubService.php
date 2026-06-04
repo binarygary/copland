@@ -105,13 +105,13 @@ class GitHubService
         }
     }
 
-    public function createDraftPr(string $repo, string $branch, string $title, string $body): array
+    public function createDraftPr(string $repo, string $branch, string $title, string $body, string $baseBranch = 'main'): array
     {
         return $this->requestJson('POST', "/repos/{$repo}/pulls", [
             'json' => [
                 'title' => $title,
                 'head' => $branch,
-                'base' => 'main',
+                'base' => $baseBranch,
                 'body' => $body,
                 // Opened ready-to-merge (not a GitHub draft) so PRs aren't blocked
                 // from merging behind a manual "Ready for review" click. (Method

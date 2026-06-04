@@ -35,17 +35,17 @@ it('delegates addComment to AsanaService::addStory with taskId cast to string', 
     $source->addComment('owner/repo', '1234567890123456', 'comment body');
 });
 
-it('delegates openDraftPr to GitHubService::createDraftPr', function () {
+it('delegates openDraftPr to GitHubService::createDraftPr including the base branch', function () {
     $asana  = \Mockery::mock(AsanaService::class);
     $github = \Mockery::mock(GitHubService::class);
 
     $github->shouldReceive('createDraftPr')
         ->once()
-        ->with('owner/repo', 'my-branch', 'PR Title', 'PR body')
+        ->with('owner/repo', 'my-branch', 'PR Title', 'PR body', 'develop')
         ->andReturn(['html_url' => 'https://example.test/pr/1', 'number' => 1]);
 
     $source = new AsanaTaskSource($asana, $github);
-    $result = $source->openDraftPr('owner/repo', 'my-branch', 'PR Title', 'PR body');
+    $result = $source->openDraftPr('owner/repo', 'my-branch', 'PR Title', 'PR body', 'develop');
 
     expect($result)->toBe(['html_url' => 'https://example.test/pr/1', 'number' => 1]);
 });

@@ -388,6 +388,7 @@ class RunCommand extends Command implements SignalableCommandInterface
                 'max_executor_rounds' => $repoConfig->maxExecutorRounds(),
                 'read_file_max_lines' => $repoConfig->readFileMaxLines(),
                 'repo_path' => $path,
+                'base_branch' => $repoConfig->baseBranch(),
             ];
 
             $orchestrator = new RunOrchestratorService(

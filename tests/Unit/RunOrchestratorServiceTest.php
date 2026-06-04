@@ -35,7 +35,7 @@ it('completes the happy path and opens a draft PR', function () {
 
     $taskSource = Mockery::mock(TaskSource::class);
     $taskSource->shouldReceive('fetchTasks')->once()->andReturn([$issue]);
-    $taskSource->shouldReceive('openDraftPr')->once()->with('acme/repo', 'feature/test-branch', 'Test PR', 'PR body')
+    $taskSource->shouldReceive('openDraftPr')->once()->with('acme/repo', 'feature/test-branch', 'Test PR', 'PR body', 'trunk')
         ->andReturn(['html_url' => 'https://example.test/pr/1', 'number' => 1]);
     $taskSource->shouldReceive('removeTag')->once()->with('acme/repo', 42, 'agent-ready');
     // Comments now fire at every transition; content is asserted in dedicated tests.
@@ -82,7 +82,7 @@ it('completes the happy path and opens a draft PR', function () {
     );
 
     $snapshot = new RunProgressSnapshot;
-    $result = $service->run('acme/repo', ['repo_path' => '/repos/acme', 'required_labels' => ['agent-ready']], snapshot: $snapshot);
+    $result = $service->run('acme/repo', ['repo_path' => '/repos/acme', 'required_labels' => ['agent-ready'], 'base_branch' => 'trunk'], snapshot: $snapshot);
 
     expect($result->status)->toBe('succeeded');
     expect($result->prUrl)->toBe('https://example.test/pr/1');

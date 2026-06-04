@@ -342,12 +342,15 @@ class RunOrchestratorService
             $this->git->push($workspacePath, $plan->branchName);
             $this->pushLog("      Pushed branch {$plan->branchName}");
 
-            // Step 11: Create draft PR
+            // Step 11: Create draft PR — target the configured base branch (RepoConfig
+            // base_branch / GlobalConfig defaults.base_branch). WorkspaceService already
+            // branches off this base, so the head branch has commits ahead of it.
             $pr = $this->taskSource->openDraftPr(
                 $repo,
                 $plan->branchName,
                 $plan->prTitle,
-                $plan->prBody
+                $plan->prBody,
+                (string) ($repoProfile['base_branch'] ?? 'main'),
             );
             $prUrl = $pr['html_url'];
             $prNumber = $pr['number'];
