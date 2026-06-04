@@ -7,11 +7,14 @@ class_name TaskLoader
 #   ~/.copland/tasks/<repo-slug-safe>/<task_id>/{task.md,status.md,runs/...}
 #
 # task.md frontmatter:
-#   id, title, repo_path, repo_slug, created_at
+#   id, title, repo_path, repo_slug, source_url, created_at
 # status.md frontmatter:
 #   state, updated_at
 # runs/ is a sibling directory of task.md; each run is a subdir named with
-# the run id, optionally containing its own status.md.
+# the run id, optionally containing status.md and outcome.md.
+# runs/<run-id>/outcome.md frontmatter:
+#   run_id, status, pr_number, pr_url, cost_usd, started_at, finished_at,
+#   failure_reason, partial
 #
 # Boot path:
 #   load_real_or_sample()  → tries disk first, falls back to sample data
