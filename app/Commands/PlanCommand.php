@@ -45,10 +45,11 @@ class PlanCommand extends Command
         $selectorClient = LlmClientFactory::forStage('selector', $globalConfig, $repoConfig);
         $plannerClient = LlmClientFactory::forStage('planner', $globalConfig, $repoConfig);
 
-        // Mirror RunCommand's pre-flight checks so non-Anthropic providers fail
-        // fast with an actionable message instead of an obscure runtime error
-        // inside the selector/planner call. Skipped: executor binary checks (we
-        // don't run the executor here).
+        // Mirror RunCommand's pre-flight checks so non-Anthropic providers
+        // fail fast with an actionable message instead of an obscure runtime
+        // error inside the selector/planner call. Restricted to the two
+        // stages PlanCommand actually invokes — probing executor would warn
+        // (or throw on Ollama) for a stage the command never reaches.
         $this->runProviderHealthChecks($globalConfig, $repoConfig);
 
         $repoProfile = [
@@ -161,7 +162,12 @@ class PlanCommand extends Command
      */
     private function runProviderHealthChecks(GlobalConfig $globalConfig, RepoConfig $repoConfig): void
     {
-        $ollamaStages = LlmClientFactory::ollamaStageConfigs($globalConfig, $repoConfig);
+        // Stages PlanCommand actually invokes — excludes 'executor' so a config
+        // that only points the executor at e.g. Ollama doesn't make `plan` throw
+        // when Ollama isn't running.
+        $planStages = ['selector', 'planner'];
+
+        $ollamaStages = LlmClientFactory::ollamaStageConfigs($globalConfig, $repoConfig, $planStages);
         $probedUrls = [];
         foreach ($ollamaStages as $entry) {
             $url = $entry['base_url'];
@@ -188,7 +194,7 @@ class PlanCommand extends Command
         $checkedBinaries = [];
         $finder = new ExecutableFinder;
 
-        foreach (LlmClientFactory::claudeCodeStageConfigs($globalConfig, $repoConfig) as $entry) {
+        foreach (LlmClientFactory::claudeCodeStageConfigs($globalConfig, $repoConfig, $planStages) as $entry) {
             $binary = $entry['binary_path'] ?? 'claude';
             if (in_array($binary, $checkedBinaries, true)) {
                 continue;
@@ -200,7 +206,7 @@ class PlanCommand extends Command
             }
         }
 
-        foreach (LlmClientFactory::codexStageConfigs($globalConfig, $repoConfig) as $entry) {
+        foreach (LlmClientFactory::codexStageConfigs($globalConfig, $repoConfig, $planStages) as $entry) {
             $binary = $entry['binary_path'] ?? 'codex';
             if (in_array($binary, $checkedBinaries, true)) {
                 continue;
