@@ -375,7 +375,12 @@ class TaskListService
 
         $tmp = $file.'.tmp';
         if (@file_put_contents($tmp, json_encode($cache, JSON_UNESCAPED_SLASHES)) !== false) {
-            @rename($tmp, $file);
+            // The Godot console polls every ~120s, so a persistent rename failure
+            // (cross-device move, permissions) would otherwise accrue a new orphan
+            // .tmp file each cycle.
+            if (! @rename($tmp, $file)) {
+                @unlink($tmp);
+            }
         }
     }
 }
