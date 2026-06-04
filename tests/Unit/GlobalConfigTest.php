@@ -114,6 +114,144 @@ GIT
     $_SERVER['HOME'] = $originalHome;
 });
 
+it('falls back to current-checkout auto-detection when repos: key is absent', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $originalCwd = getcwd();
+    $home = sys_get_temp_dir().'/copland-global-config-no-repos-key-'.uniqid();
+    $repoPath = $home.'/repo';
+
+    mkdir($repoPath, 0755, true);
+    $_SERVER['HOME'] = $home;
+    chdir($repoPath);
+
+    // Defaults-only config — exactly the regression: a user edits ~/.copland.yml
+    // to set a defaults value without a repos: block, and the manifest silently
+    // empties. With the fallback, the current checkout is treated as configured.
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+defaults:
+  max_files_changed: 5
+YAML
+    );
+
+    mkdir($repoPath.'/.git', 0755, true);
+    file_put_contents($repoPath.'/.git/config', <<<'GIT'
+[remote "origin"]
+    url = git@github.com:owner/current.git
+GIT
+    );
+
+    $config = new GlobalConfig;
+
+    expect($config->configuredRepos())->toBe([
+        ['slug' => 'owner/current', 'path' => getcwd()],
+    ]);
+
+    chdir($originalCwd);
+    $_SERVER['HOME'] = $originalHome;
+});
+
+it('resolves the worktree root, not getcwd(), when fallback is triggered from a subdirectory', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $originalCwd = getcwd();
+    $home = sys_get_temp_dir().'/copland-global-config-worktree-root-'.uniqid();
+    $repoPath = $home.'/repo';
+    $subdir = $repoPath.'/src/nested';
+
+    mkdir($subdir, 0755, true);
+    $_SERVER['HOME'] = $home;
+
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+defaults:
+  max_files_changed: 5
+YAML
+    );
+
+    // Real git init so `git rev-parse --show-toplevel` succeeds from the subdir.
+    chdir($repoPath);
+    shell_exec('git init -q 2>/dev/null');
+    shell_exec('git remote add origin git@github.com:owner/current.git 2>/dev/null');
+
+    chdir($subdir);
+
+    $config = new GlobalConfig;
+
+    // realpath() on the expected side handles symlink-resolved tmp paths (macOS
+    // resolves /var/folders → /private/var/folders).
+    expect($config->configuredRepos())->toBe([
+        ['slug' => 'owner/current', 'path' => realpath($repoPath)],
+    ]);
+
+    chdir($originalCwd);
+    $_SERVER['HOME'] = $originalHome;
+});
+
+it('memoizes the auto-detection fallback so repos() does not shell out per call', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $originalCwd = getcwd();
+    $home = sys_get_temp_dir().'/copland-global-config-memoize-'.uniqid();
+    $repoPath = $home.'/repo';
+
+    mkdir($repoPath, 0755, true);
+    $_SERVER['HOME'] = $home;
+    chdir($repoPath);
+
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+defaults:
+  max_files_changed: 5
+YAML
+    );
+
+    mkdir($repoPath.'/.git', 0755, true);
+    file_put_contents($repoPath.'/.git/config', <<<'GIT'
+[remote "origin"]
+    url = git@github.com:owner/current.git
+GIT
+    );
+
+    $config = new GlobalConfig;
+    $first = $config->repos();
+    $second = $config->repos();
+
+    // Both calls return the same memoized array (same reference identity is
+    // overkill, but value equality plus persistence across calls is what we want).
+    expect($first)->toBe($second);
+    expect($first)->toHaveCount(1);
+
+    chdir($originalCwd);
+    $_SERVER['HOME'] = $originalHome;
+});
+
+it('respects an explicit empty repos: list (does not auto-detect)', function () {
+    $originalHome = $_SERVER['HOME'] ?? null;
+    $originalCwd = getcwd();
+    $home = sys_get_temp_dir().'/copland-global-config-empty-repos-'.uniqid();
+    $repoPath = $home.'/repo';
+
+    mkdir($repoPath, 0755, true);
+    $_SERVER['HOME'] = $home;
+    chdir($repoPath);
+
+    // The user explicitly said "no repos." Auto-detection must not override that.
+    file_put_contents($home.'/.copland.yml', <<<'YAML'
+repos: []
+YAML
+    );
+
+    mkdir($repoPath.'/.git', 0755, true);
+    file_put_contents($repoPath.'/.git/config', <<<'GIT'
+[remote "origin"]
+    url = git@github.com:owner/current.git
+GIT
+    );
+
+    $config = new GlobalConfig;
+
+    expect($config->configuredRepos())->toBe([]);
+
+    chdir($originalCwd);
+    $_SERVER['HOME'] = $originalHome;
+});
+
 it('returns empty string for asanaToken when not configured', function () {
     $originalHome = $_SERVER['HOME'] ?? null;
     $home = sys_get_temp_dir().'/copland-global-config-asana-'.uniqid();

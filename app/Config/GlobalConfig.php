@@ -13,6 +13,9 @@ class GlobalConfig
 
     private string $path;
 
+    /** @var array<int, array{slug: string, path: string}>|null Cached repos() fallback so we don't shell out per call. */
+    private ?array $reposFallback = null;
+
     public function __construct()
     {
         $this->path = $this->resolvePath();
@@ -128,7 +131,62 @@ YAML;
 
     public function repos(): array
     {
-        return $this->data['repos'] ?? [];
+        // An explicit "repos:" key (even an empty list) wins: the user is
+        // declaring "this is my repo list." A missing key means the user hasn't
+        // declared anything — fall back to the current checkout so creating
+        // ~/.copland.yml just to set defaults/models/api doesn't silently empty
+        // the manifest. The "no config file at all" path already lands here too
+        // because ensureExists() writes a default with `# repos:` commented out.
+        if (array_key_exists('repos', $this->data)) {
+            return $this->data['repos'] ?? [];
+        }
+
+        return $this->reposFallback ??= $this->detectFallbackRepos();
+    }
+
+    /**
+     * Detect the current checkout's repo. Stored on `path` is the *worktree root*
+     * (via `git rev-parse --show-toplevel`), not raw getcwd(): when copland is
+     * invoked from a subdirectory of a checkout, downstream consumers
+     * (TaskListService::targetRepos and anything else using `path` as the workspace
+     * root) need to operate on the full tree, not just the subdirectory.
+     *
+     * Memoized via $reposFallback so repos() stays cheap — asanaProjectForRepo()
+     * and friends iterate repos() in tight loops.
+     *
+     * @return array<int, array{slug: string, path: string}>
+     */
+    private function detectFallbackRepos(): array
+    {
+        // When getcwd() fails, there's no meaningful workspace to auto-detect
+        // and falling back to '.' would surface a relative path that breaks
+        // downstream consumers expecting an absolute workspace root.
+        $currentPath = getcwd();
+        if ($currentPath === false) {
+            return [];
+        }
+
+        $detected = $this->detectRepoSlugAtPath($currentPath);
+
+        if ($detected === null) {
+            return [];
+        }
+
+        return [['slug' => $detected, 'path' => $this->resolveWorktreeRoot($currentPath) ?? $currentPath]];
+    }
+
+    private function resolveWorktreeRoot(string $path): ?string
+    {
+        $process = new Process(['git', '-C', $path, 'rev-parse', '--show-toplevel']);
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            return null;
+        }
+
+        $root = trim($process->getOutput());
+
+        return $root === '' ? null : $root;
     }
 
     public function configuredRepos(): array
