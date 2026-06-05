@@ -119,7 +119,9 @@ static func load_real_or_sample(extra_repo_paths: Array = []) -> Array:
                             if not t.is_empty():
                                 tasks.append(t)
                         task_id = repo_dir.get_next()
+                    repo_dir.list_dir_end()
             repo = dir.get_next()
+        dir.list_dir_end()
 
     # Stub entries for registered repos that don't yet have tasks
     var existing_repos: Dictionary = {}
@@ -286,6 +288,7 @@ static func _count_runs(runs_dir: String) -> int:
         if d.current_is_dir() and not entry.begins_with("."):
             count += 1
         entry = d.get_next()
+    d.list_dir_end()
     return count
 
 
@@ -312,6 +315,7 @@ static func load_runs(task_dir: String) -> Array:
                 "mtime": mtime,
             })
         entry = d.get_next()
+    d.list_dir_end()
     rows.sort_custom(func(a, b): return int(a.mtime) > int(b.mtime))
     return rows
 
