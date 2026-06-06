@@ -257,6 +257,14 @@ static func _read_frontmatter(file_path: String) -> Dictionary:
         if colon <= 0:
             continue
         var key := stripped.substr(0, colon).strip_edges()
+        var valid_key := true
+        for i in key.length():
+            var code := key.unicode_at(i)
+            if not ((code >= 97 and code <= 122) or code == 95):
+                valid_key = false
+                break
+        if not valid_key:
+            continue
         var val := stripped.substr(colon + 1).strip_edges()
         val = val.trim_prefix("'").trim_suffix("'")
         val = val.trim_prefix("\"").trim_suffix("\"")
@@ -270,6 +278,9 @@ static func _read_frontmatter(file_path: String) -> Dictionary:
         val = val.replace("\\r", "\r")
         val = val.replace(soh, "\\")
         out[key] = val
+    # MD-04: delimiter-opened frontmatter is all-or-nothing. Without a
+    # closing delimiter, discard collected lines so markdown body text cannot
+    # become phantom metadata.
     if opened_with_delimiter and not closed_delimiter:
         return {}
     return out
