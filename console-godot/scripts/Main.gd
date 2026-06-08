@@ -521,7 +521,10 @@ func _move_selection(delta: int) -> void:
 
 
 func _ensure_selected_visible() -> void:
-    if task_scroll == null or selected_task_index >= task_list_box.get_child_count():
+    if task_scroll == null or task_list_box == null or selected_task_index >= task_list_box.get_child_count():
+        return
+    await get_tree().process_frame
+    if task_scroll == null or task_list_box == null or selected_task_index >= task_list_box.get_child_count():
         return
     var row: Control = task_list_box.get_child(selected_task_index)
     if row == null:
