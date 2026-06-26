@@ -1025,6 +1025,8 @@ func _make_task_row(t: Dictionary, is_selected: bool) -> PanelContainer:
 
     var center := VBoxContainer.new()
     center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    center.custom_minimum_size = Vector2(0, 0)
+    center.clip_contents = true
     center.add_theme_constant_override("separation", 6)
     row.add_child(center)
 
@@ -1034,7 +1036,10 @@ func _make_task_row(t: Dictionary, is_selected: bool) -> PanelContainer:
         "font_color", PALETTE.cream if is_selected else PALETTE.cream_lo)
     title_lbl.add_theme_font_size_override(
         "font_size", TYPE.task_title if is_selected else TYPE.task_title_lo)
+    title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    title_lbl.custom_minimum_size = Vector2(0, 0)
     title_lbl.clip_text = true
+    title_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
     center.add_child(title_lbl)
 
     var meta_parts: Array = []
